@@ -11,7 +11,7 @@
 <style>
 :root{
   --p:#7A4099; --pd:#4E2566; --pl:#A06BC0; --p2:#F3EBF8; --p3:#DFCDEA;
-  --ink:#1E1A24; --ink2:#3C3545; --mut:#6F6878; --mut2:#9B93A6;
+  --ink:#1E1A24; --ink2:#3C3545; --mut:#645D6F; --mut2:#7E7689;
   --line:#E7E1ED; --bg:#F6F4F9; --card:#fff;
   --ok:#0E8F6E; --ok2:#E6F6F0; --warn:#C97B00; --warn2:#FFF4E0; --bad:#C2413B; --bad2:#FDE9E7;
   --blue:#2F6FDE; --r:18px; --sh:0 1px 2px rgba(30,20,40,.04),0 8px 24px -12px rgba(30,20,40,.14);
@@ -43,8 +43,8 @@ img{display:block;max-width:100%}
 .btn.p{background:var(--p);color:#fff;border-color:var(--p)}
 .btn.p:hover{background:var(--pd)}
 .btn.o{border-color:var(--p);color:var(--p)}
-.btn.sm{padding:6px 10px;font-size:12.5px}
-.savechip{font-size:12px;font-weight:600;color:var(--ok);white-space:nowrap}
+.btn.sm{padding:9px 12px;font-size:12.5px}
+.savechip{font-size:12.5px;font-weight:700;color:#0A7358;white-space:nowrap}
 .savechip.warn{color:var(--warn)}
 
 /* ───────── 레이아웃 */
@@ -84,7 +84,8 @@ main{max-width:1240px;margin:0 auto;padding:26px 22px 110px}
 .pcard.absent:hover{transform:none}
 .ph{position:relative;aspect-ratio:3/2;background:linear-gradient(160deg,#EDE6F3,#DED2E9);overflow:hidden;flex:none}
 .ph img{width:100%;height:100%;object-fit:cover;object-position:center 22%}
-.ph .ini{width:100%;height:100%;display:grid;place-items:center;font-size:40px;font-weight:800;color:#fff;letter-spacing:-.04em}
+.ph{--inifs:40px}
+.ph .ini{width:100%;height:100%;display:grid;place-items:center;font-weight:800;color:#fff;letter-spacing:-.04em;text-align:center;line-height:1.1}
 .ph .rk{position:absolute;left:12px;top:12px;background:rgba(20,12,28,.72);color:#fff;font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;backdrop-filter:blur(6px)}
 .ph .sc{position:absolute;right:12px;top:12px;background:#fff;border-radius:12px;padding:5px 10px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.14);line-height:1.1}
 .ph .sc b{font-size:19px;font-weight:800;color:var(--p);display:block}
@@ -113,7 +114,8 @@ main{max-width:1240px;margin:0 auto;padding:26px 22px 110px}
 .hero-in{display:flex;gap:28px;padding:32px 36px 28px;align-items:flex-start}
 .hero-ph{width:132px;flex:none;border-radius:16px;overflow:hidden;background:rgba(255,255,255,.14);aspect-ratio:3/4;box-shadow:0 10px 30px rgba(0,0,0,.2)}
 .hero-ph img{width:100%;height:100%;object-fit:cover}
-.hero-ph .ini{width:100%;height:100%;display:grid;place-items:center;font-size:44px;font-weight:800;color:#fff}
+.hero-ph{--inifs:42px}
+.hero-ph .ini{width:100%;height:100%;display:grid;place-items:center;font-weight:800;color:#fff;text-align:center;line-height:1.15}
 .hero-txt{flex:1;min-width:0}
 .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.72;font-weight:700}
 .hero h1{margin:5px 0 3px;font-size:40px;line-height:1.08;letter-spacing:-.04em;font-weight:800}
@@ -232,7 +234,9 @@ input.f[readonly]{background:transparent;border-color:transparent;padding-left:0
 .absent-banner p{margin:0;opacity:.78;font-size:15px}
 .absent-banner .un{margin-left:auto}
 .absent-banner .un .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
-.dim{opacity:.38;pointer-events:none;filter:grayscale(.85)}
+.dim{opacity:.42;pointer-events:none;filter:grayscale(.85)}
+.dim [tabindex],.dim button,.dim input,.dim textarea{visibility:visible}
+[inert]{user-select:none}
 .banner{background:#fff;border:1px solid var(--p3);border-radius:13px;padding:12px 18px;margin-bottom:16px;font-size:14px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 
 table{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -320,7 +324,8 @@ body.review .editonly{display:none}
   .hero,.dash-hero{-webkit-print-color-adjust:exact;print-color-adjust:exact;border-radius:0}
   .card,.key,.pcard{break-inside:avoid;border-radius:8px}
   .grid{grid-template-columns:repeat(3,1fr)}
-  textarea{min-height:56px}
+  textarea{display:none}
+  .ro{border-left-width:3px;background:#fafafa}
   section{margin-top:15px}
 }
 </style>
@@ -341,6 +346,7 @@ body.review .editonly{display:none}
 <div id="more" style="display:none"></div>
 </header>
 
+<noscript><div style="max-width:760px;margin:40px auto;padding:24px;background:#fff;border:1px solid #E7E1ED;border-radius:18px"><h2 style="margin:0 0 8px">자바스크립트가 꺼져 있습니다</h2><p style="margin:0;color:#6F6878">이 대시보드는 자바스크립트로 동작합니다. 브라우저 설정에서 허용한 뒤 새로고침해 주세요.</p></div></noscript>
 <main id="app"></main>
 <input type="file" id="fileIn" accept="application/json" style="display:none">
 

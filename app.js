@@ -1,7 +1,7 @@
-/* 판옵티콘 채용 대시보드 — app.js
+/* 판옵티콘 채용 대시보드 — app.js (v4.1, 코드리뷰 반영)
    · 홈: 인물 카드 그리드 (사진 + 요약 + 점수)
    · 상세: 인물별 랜딩 페이지 + 채점
-   · 상태: results.json(공용 커밋본) ⊕ localStorage(내 브라우저) 후보별 타임스탬프 병합
+   · 상태: results.json(공용 커밋본) ⊕ localStorage(내 브라우저) — 후보별 타임스탬프 병합
 */
 (function () {
 'use strict';
@@ -12,56 +12,109 @@ var LABELS = { 1: '미흡', 2: '부족', 3: '보통', 4: '우수', 5: '탁월' }
 var SHORT = { logic: '로직', tech: '협업', biz: '사업', solve: '문제', ai: 'AI', fit: '인성', comm: '소통', gut: '직감' };
 var KSHORT = { collab: '개발·디자인·경영진 협업', ai: 'AI 활용', biz: '사업적 사고', person: '인성·성격' };
 var AVCOL = [['#7A4099', '#B07FCB'], ['#2F6FDE', '#6FA3F0'], ['#0E8F6E', '#4FC3A1'], ['#C97B00', '#F0B24F'], ['#C2413B', '#E5837E'], ['#4E2566', '#8B5FA8'], ['#1F7A8C', '#5BB3C4']];
+var EMPTY = { scores: {}, memo: {}, flags: {}, checks: {}, verdict: '', rec: '' };
 
-var S = {};        // 통합 상태
-var RO = false;    // 검토 모드
-var FILTER = 'all', SORT = 'score', Q = '';
-var FH = null, WT = null;  // 파일 핸들(로컬 HTML 저장용)
+var S = {};
+var RO = false, _printRO = false;
+var FILTER = 'all', SORT = 'score', Q = '', QT = null;
+var FH = null, WT = null;
 
 /* ───────── 유틸 */
 function $(s, r) { return (r || document).querySelector(s); }
-function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function oneLine(s) { return String(s || '').replace(/\s*\n+\s*/g, ' / ').trim(); }
-function cs(id) { if (!S[id]) S[id] = { scores: {}, memo: {}, flags: {}, checks: {}, verdict: '', rec: '' }; return S[id]; }
-function weighted(id) { var t = 0, n = 0, st = cs(id); D.RUBRIC.forEach(function (r) { var v = st.scores[r.key]; if (v) { t += v / 5 * r.w; n++; } }); return { t: Math.round(t), n: n }; }
+function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
+function stamp() { var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); }; return String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+
+/* 쓰기용: 없으면 만들고, 깨진 필드는 정규화 */
+function cs(id) {
+  var s = S[id];
+  if (!s || typeof s !== 'object') s = S[id] = {};
+  if (!s.scores || typeof s.scores !== 'object') s.scores = {};
+  if (!s.memo || typeof s.memo !== 'object') s.memo = {};
+  if (!s.flags || typeof s.flags !== 'object') s.flags = {};
+  if (!s.checks || typeof s.checks !== 'object') s.checks = {};
+  if (typeof s.verdict !== 'string') s.verdict = '';
+  if (typeof s.rec !== 'string') s.rec = '';
+  return s;
+}
+/* 읽기용: 레코드를 새로 만들지 않음 */
+function ro(id) {
+  var s = S[id];
+  if (!s || typeof s !== 'object') return EMPTY;
+  return {
+    scores: s.scores && typeof s.scores === 'object' ? s.scores : {},
+    memo: s.memo && typeof s.memo === 'object' ? s.memo : {},
+    flags: s.flags && typeof s.flags === 'object' ? s.flags : {},
+    checks: s.checks && typeof s.checks === 'object' ? s.checks : {},
+    verdict: typeof s.verdict === 'string' ? s.verdict : '',
+    rec: typeof s.rec === 'string' ? s.rec : '',
+    absent: !!s.absent, _ts: s._ts
+  };
+}
+function weighted(id) { var t = 0, n = 0, st = ro(id); D.RUBRIC.forEach(function (r) { var v = st.scores[r.key]; if (v) { t += v / 5 * r.w; n++; } }); return { t: Math.round(t), n: n }; }
 function verdictFor(t) { for (var i = 0; i < D.VERDICTS.length; i++) if (t >= D.VERDICTS[i].min) return D.VERDICTS[i]; return D.VERDICTS[D.VERDICTS.length - 1]; }
 function vlabel(st) { if (!st.verdict) return '–'; for (var i = 0; i < D.VERDICTS.length; i++) if (D.VERDICTS[i].key === st.verdict) return D.VERDICTS[i].label; return '–'; }
 function recLabel(k) { return { Y: '추천', H: '보류', N: '비추천' }[k] || '–'; }
 function cand(id) { for (var i = 0; i < D.CANDIDATES.length; i++) if (D.CANDIDATES[i].id === id) return D.CANDIDATES[i]; return null; }
-function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
-function stamp() { var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); }; return String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+function sc15(v) { v = parseInt(v, 10); return (v >= 1 && v <= 5) ? v : null; }
 
-/* ───────── 상태 로드 · 저장 */
+/* ───────── 상태 로드 · 병합 · 저장 */
 function loadLocal() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+function isEmptyRec(r) {
+  if (!r || typeof r !== 'object') return true;
+  if (r.absent || r.verdict || r.rec) return false;
+  var has = function (o) { return !!o && typeof o === 'object' && Object.keys(o).some(function (k) { return o[k] !== '' && o[k] != null && o[k] !== false; }); };
+  return !has(r.scores) && !has(r.memo) && !has(r.flags) && !has(r.checks);
+}
 function mergeState(base, local) {
-  var out = {}, ids = {};
+  var out = {}, ids = {}, dropped = [];
   Object.keys(base || {}).forEach(function (k) { ids[k] = 1; });
   Object.keys(local || {}).forEach(function (k) { ids[k] = 1; });
   Object.keys(ids).forEach(function (k) {
     if (k.charAt(0) === '_') return;
     var b = (base || {})[k], l = (local || {})[k];
-    if (!b) { out[k] = l; return; }
-    if (!l) { out[k] = b; return; }
-    out[k] = ((l._ts || '') >= (b._ts || '')) ? l : b;   // 후보별 최신본 채택
+    if (isEmptyRec(l)) { if (!isEmptyRec(b)) out[k] = b; return; }   // 빈 로컬은 공용본을 절대 못 덮음
+    if (isEmptyRec(b)) { out[k] = l; return; }
+    var same = false;
+    try { same = JSON.stringify(l) === JSON.stringify(b); } catch (e) {}
+    var lt = l._ts || '', bt = b._ts || '';
+    if (lt && lt >= bt) { out[k] = l; if (bt && !same) dropped.push(k + '(공용)'); }
+    else { out[k] = b; if (!same) dropped.push(k + '(내 브라우저)'); }
   });
   out._base = (base || {})._savedAt || '';
   out._savedAt = (local || {})._savedAt || out._base;
+  out._dropped = dropped;
   return out;
 }
+function setChip(t, warn) { var c = $('#saveChip'); if (c) { c.textContent = t; c.className = 'savechip' + (warn ? ' warn' : ''); } }
 function save() {
   S._savedAt = new Date().toISOString();
-  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+  var payload = null, ok = false;
+  try { payload = JSON.stringify(S); } catch (e) {}
+  if (payload) {
+    try { localStorage.setItem(KEY, payload); ok = (localStorage.getItem(KEY) === payload); } catch (e) { ok = false; }
+  }
+  if (!ok) {
+    setChip('⚠ 저장 실패 — 지금 「기록 내보내기」로 파일 저장하세요', true);
+    if (!save._warned) {
+      save._warned = true;
+      alert('이 브라우저에 기록을 저장하지 못했습니다.\n(시크릿 모드 · 용량 초과 · 정책 차단 등)\n\n지금 바로 상단 「기록 내보내기」로 JSON 파일을 저장하세요.');
+    }
+    return;
+  }
+  save._warned = false;
   setChip(FH ? '파일에 저장 중…' : '이 브라우저에 저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), !FH);
   scheduleWrite();
 }
 function touch(id) { cs(id)._ts = new Date().toISOString(); }
-function setChip(t, warn) { var c = $('#saveChip'); if (c) { c.textContent = t; c.className = 'savechip' + (warn ? ' warn' : ''); } }
 
 /* ───────── 아바타 */
-function avatar(c, cls) {
-  if (c.photo) return '<img src="img/' + c.id + '.jpg" alt="' + esc(c.name) + '" loading="lazy">';
+function avatar(c) {
+  if (c.photo) return '<img src="img/' + encodeURIComponent(c.id) + '.jpg" alt="' + esc(c.name) + ' 증명사진" loading="lazy">';
   var p = AVCOL[hash(c.id) % AVCOL.length];
-  return '<div class="ini" style="background:linear-gradient(140deg,' + p[0] + ',' + p[1] + ')">' + esc(c.name) + '</div>';
+  var nm = String(c.name), fs = nm.length <= 2 ? 1 : nm.length === 3 ? .82 : .62;
+  return '<div class="ini" style="background:linear-gradient(140deg,' + p[0] + ',' + p[1] + ');font-size:calc(var(--inifs,40px) * ' + fs + ')" aria-hidden="true">' + esc(nm) + '</div>';
 }
 
 /* ───────── 라우팅 */
@@ -69,17 +122,18 @@ function go(h) { if (location.hash === h) render(); else location.hash = h; }
 window.go = go;
 function route() {
   var h = (location.hash || '#/').replace(/^#/, '');
-  var m = h.match(/^\/c\/([a-z_]+)/);
+  try { h = decodeURIComponent(h); } catch (e) {}
+  var m = h.match(/^\/c\/([\w-]+)/);
   if (m) return { v: 'cand', id: m[1] };
   if (h.indexOf('/compare') === 0) return { v: 'compare' };
   if (h.indexOf('/guide') === 0) return { v: 'guide' };
   return { v: 'home' };
 }
 
-/* ───────── 통계 · 목록 */
+/* ───────── 목록 · 통계 */
 function rows() {
   return D.CANDIDATES.map(function (c) {
-    var st = cs(c.id), w = weighted(c.id);
+    var st = ro(c.id), w = weighted(c.id);
     return { c: c, st: st, w: w, absent: !!st.absent, scored: !st.absent && w.n > 0 };
   });
 }
@@ -92,6 +146,7 @@ function statsOf(rs) {
     pending: rs.filter(function (r) { return !r.absent && !r.w.n; }).length
   };
 }
+function months(t) { var m = String(t).match(/(\d+)\s*년(?:\s*(\d+)\s*개월)?/); if (m) return (+m[1]) * 12 + (+(m[2] || 0)); var m2 = String(t).match(/(\d+)\s*개월/); return m2 ? +m2[1] : 0; }
 function filtered() {
   var rs = rows();
   if (FILTER === 'done') rs = rs.filter(function (r) { return r.scored; });
@@ -110,32 +165,28 @@ function filtered() {
   else if (SORT === 'exp') rs.sort(function (a, b) { return months(b.c.total) - months(a.c.total); });
   return rs;
 }
-function months(t) { var m = String(t).match(/(\d+)\s*년(?:\s*(\d+)\s*개월)?/); if (m) return (+m[1]) * 12 + (+(m[2] || 0)); var m2 = String(t).match(/(\d+)\s*개월/); return m2 ? +m2[1] : 0; }
 
-/* ───────── 뷰: 홈 대시보드 */
+/* ───────── 뷰: 홈 */
 function viewHome() {
   var rs = rows(), st = statsOf(rs), list = filtered();
-  var seg = function (v, t) { return '<button class="' + (SORT === v ? 'on' : '') + '" onclick="setSort(\'' + v + '\')">' + t + '</button>'; };
-  var stat = function (k, n, l) { return '<div class="stat' + (FILTER === k ? ' on' : '') + '" onclick="setFilter(\'' + k + '\')"><b>' + n + '</b><span>' + l + '</span></div>'; };
+  var seg = function (v, t) { return '<button type="button" aria-pressed="' + (SORT === v) + '" class="' + (SORT === v ? 'on' : '') + '" onclick="setSort(\'' + v + '\')">' + t + '</button>'; };
+  var stat = function (k, n, l) { return '<button type="button" class="stat' + (FILTER === k ? ' on' : '') + '" aria-pressed="' + (FILTER === k) + '" onclick="setFilter(\'' + k + '\')"><b>' + n + '</b><span>' + l + '</span></button>'; };
   return '' +
     '<div class="dash-hero">' +
       '<h1>프로덕트 기획자 채용 현황</h1>' +
       '<p>' + esc(D.META.sub) + ' · ' + esc(D.META.date) + ' · ' + esc(D.META.owner) + '</p>' +
-      '<div class="stats">' +
-        stat('all', st.total, '전체 지원자') +
-        stat('done', st.done, '면접 완료') +
-        stat('rec', st.rec, '2차 추천') +
-        stat('pending', st.pending, '면접 예정') +
-        stat('absent', st.absent, '미참여') +
-      '</div>' +
+      '<div class="stats">' + stat('all', st.total, '전체 지원자') + stat('done', st.done, '면접 완료') +
+        stat('rec', st.rec, '2차 추천') + stat('pending', st.pending, '면접 예정') + stat('absent', st.absent, '미참여') + '</div>' +
     '</div>' +
     '<div class="toolbar noprint">' +
-      '<div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
-      '<input type="search" id="q" placeholder="이름 · 회사 · 경력 · 학교 검색" value="' + esc(Q) + '" oninput="setQ(this.value)"></div>' +
-      '<div class="segs">' + seg('score', '점수순') + seg('exp', '경력순') + seg('name', '이름순') + '</div>' +
-    '</div>' +
-    (list.length ? '<div class="grid">' + list.map(cardHTML).join('') + '</div>'
-      : '<div class="empty"><b>해당하는 지원자가 없습니다</b>필터나 검색어를 바꿔보세요.</div>');
+      '<div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+      '<input type="search" id="q" aria-label="지원자 검색" placeholder="이름 · 회사 · 경력 · 학교 검색" value="' + esc(Q) + '" oninput="setQ(this.value)"></div>' +
+      '<div class="segs" role="group" aria-label="정렬">' + seg('score', '점수순') + seg('exp', '경력순') + seg('name', '이름순') + '</div>' +
+    '</div>' + gridHTML(list);
+}
+function gridHTML(list) {
+  return list.length ? '<div class="grid">' + list.map(cardHTML).join('') + '</div>'
+    : '<div class="empty"><b>해당하는 지원자가 없습니다</b>필터나 검색어를 바꿔보세요.</div>';
 }
 function cardHTML(r, i) {
   var c = r.c, st = r.st, w = r.w;
@@ -151,28 +202,30 @@ function cardHTML(r, i) {
     if (fl) tags.push('<span class="tag r">⚠ ' + fl + '</span>');
   }
   var bars = D.RUBRIC.map(function (x) {
-    var s = st.scores[x.key] || 0;
+    var s = sc15(st.scores[x.key]);
     return '<i class="' + (s ? 'f' : '') + '" style="height:' + (s ? 4 + s * 3.6 : 4) + 'px" title="' + esc(x.name) + ' ' + (s || '-') + '"></i>';
   }).join('');
-  return '<article class="pcard' + (r.absent ? ' absent' : '') + '" onclick="go(\'#/c/' + c.id + '\')">' +
+  return '<article class="pcard' + (r.absent ? ' absent' : '') + '" tabindex="0" role="link" aria-label="' + esc(c.name) + ' 상세 보기"' +
+    ' onclick="go(\'#/c/' + c.id + '\')" onkeydown="cardKey(event,\'' + c.id + '\')">' +
     '<div class="ph">' + avatar(c) +
       (SORT === 'score' && w.n && !r.absent ? '<span class="rk">#' + (i + 1) + '</span>' : '') +
       (w.n && !r.absent ? '<span class="sc"><b>' + w.t + '</b><i>/ 100</i></span>' : '') +
-    '</div>' +
-    '<div class="pbody">' +
+    '</div><div class="pbody">' +
       '<div class="pname"><h3>' + esc(c.name) + '</h3><span>' + esc(c.gender) + ' · ' + esc(c.age) + '</span></div>' +
       '<div class="meta-row">' + (tags.join('') || '<span class="tag n">미채점</span>') + '</div>' +
       '<p class="psum">' + esc(c.summary) + '</p>' +
-      '<div class="pfoot"><span class="info">경력 ' + esc(c.total.split('(')[0].trim()) + '</span><div class="bars">' + bars + '</div></div>' +
+      '<div class="pfoot"><span class="info">경력 ' + esc(String(c.total).split('(')[0].trim()) + '</span><div class="bars" aria-hidden="true">' + bars + '</div></div>' +
     '</div></article>';
 }
+window.cardKey = function (e, id) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('#/c/' + id); } };
 window.setFilter = function (f) { FILTER = f; render(); };
 window.setSort = function (s) { SORT = s; render(); };
 window.setQ = function (v) {
-  Q = v;
-  var el = $('#app .grid') || $('#app .empty'), list = filtered();
-  var html = list.length ? '<div class="grid">' + list.map(cardHTML).join('') + '</div>' : '<div class="empty"><b>해당하는 지원자가 없습니다</b>필터나 검색어를 바꿔보세요.</div>';
-  if (el) el.outerHTML = html;
+  Q = v; clearTimeout(QT);
+  QT = setTimeout(function () {
+    var el = $('#app .grid') || $('#app .empty');
+    if (el) el.outerHTML = gridHTML(filtered());
+  }, 130);
 };
 
 /* ───────── 뷰: 상세 */
@@ -180,16 +233,16 @@ function viewCand(c) {
   var st = cs(c.id), w = weighted(c.id), v = verdictFor(w.t);
   var rub = {}; D.RUBRIC.forEach(function (r) { rub[r.key] = r; });
   var sc = function (k) {
-    var val = st.scores[k];
-    return '<div class="score">' + [1, 2, 3, 4, 5].map(function (n) {
-      return '<button class="' + (val === n ? 'on' : '') + '" onclick="setScore(\'' + c.id + '\',\'' + k + '\',' + n + ')"><b>' + n + '</b><small>' + LABELS[n] + '</small></button>';
+    var val = sc15(st.scores[k]);
+    return '<div class="score" role="group" aria-label="점수">' + [1, 2, 3, 4, 5].map(function (n) {
+      return '<button type="button" aria-pressed="' + (val === n) + '" class="' + (val === n ? 'on' : '') + '" onclick="setScore(\'' + c.id + '\',\'' + k + '\',' + n + ')"><b>' + n + '</b><small>' + LABELS[n] + '</small></button>';
     }).join('') + (RO && !val ? '<span class="mut sm" style="align-self:center">미채점</span>' : '') + '</div>';
   };
   var ta = function (k, ph, h) {
     if (RO) return '<div class="ro' + (st.memo[k] ? '' : ' empty') + '">' + (esc(st.memo[k]) || '기록 없음') + '</div>';
-    return '<textarea ' + (h ? 'style="min-height:' + h + 'px"' : '') + ' placeholder="' + esc(ph || '') + '" oninput="setMemo(\'' + c.id + '\',\'' + k + '\',this.value)">' + esc(st.memo[k] || '') + '</textarea>';
+    return '<textarea data-mk="' + esc(k) + '" ' + (h ? 'style="min-height:' + h + 'px"' : '') + ' placeholder="' + esc(ph || '') + '" oninput="setMemo(\'' + c.id + '\',\'' + k + '\',this.value)">' + esc(st.memo[k] || '') + '</textarea>';
   };
-  var inp = function (k, ph) { return '<input class="f" type="text" ' + (RO ? 'readonly' : '') + ' placeholder="' + esc(RO ? '–' : (ph || '')) + '" value="' + esc(st.memo[k] || '') + '" oninput="setMemo(\'' + c.id + '\',\'' + k + '\',this.value)">'; };
+  var inp = function (k, ph) { return '<input class="f" data-mk="' + esc(k) + '" type="text" ' + (RO ? 'readonly' : '') + ' placeholder="' + esc(RO ? '–' : (ph || '')) + '" value="' + esc(st.memo[k] || '') + '" oninput="setMemo(\'' + c.id + '\',\'' + k + '\',this.value)">'; };
   var ck = D.CASE.checks.filter(function (x, i) { return st.checks[i]; }).length;
   var fl = D.FLAGS.filter(function (f, i) { return st.flags[i]; });
   var chip = function (b, s) { return '<div class="chip"><b>' + b + '</b><span>' + s + '</span></div>'; };
@@ -201,7 +254,7 @@ function viewCand(c) {
     out += '<div class="banner"><div><b>검토 모드</b> — 면접관 기록을 읽기 전용으로 표시합니다. 채점 완료 <b>' + done + '/' + D.CANDIDATES.length + '명</b>' + (S._savedAt ? ' · 최종 ' + new Date(S._savedAt).toLocaleString('ko-KR') : '') + '</div><div class="noprint"><button class="btn" onclick="go(\'#/compare\')">비교표</button></div></div>';
   }
   if (st.absent) {
-    out += '<div class="absent-banner"><div class="x">⊘</div><div><h2>면접 미참여</h2><p>' + esc(c.name) + ' 후보는 면접에 참여하지 않았습니다' + (st.memo.absentWhy ? ' — ' + esc(st.memo.absentWhy) : '') + '. 평가 대상에서 제외됩니다.</p></div>' +
+    out += '<div class="absent-banner"><div class="x" aria-hidden="true">⊘</div><div><h2>면접 미참여</h2><p>' + esc(c.name) + ' 후보는 면접에 참여하지 않았습니다' + (st.memo.absentWhy ? ' — ' + esc(st.memo.absentWhy) : '') + '. 평가 대상에서 제외됩니다.</p></div>' +
       (RO ? '' : '<div class="un"><button class="btn" onclick="setAbsent(\'' + c.id + '\',false)">미참여 취소</button></div>') + '</div>';
   }
 
@@ -216,19 +269,18 @@ function viewCand(c) {
     '</div></div>' +
     '<div class="hero-meta"><label>면접</label>' +
       (RO ? '<span>' + esc(st.memo.date || '–') + ' ' + esc(st.memo.time || '') + ' · 면접관 ' + esc(st.memo.iv || '–') + '</span>'
-          : '<input type="date" value="' + esc(st.memo.date || '') + '" oninput="setMemo(\'' + c.id + '\',\'date\',this.value)">' +
-            '<input type="time" value="' + esc(st.memo.time || '') + '" oninput="setMemo(\'' + c.id + '\',\'time\',this.value)">' +
-            '<input type="text" placeholder="면접관" style="width:130px" value="' + esc(st.memo.iv || '') + '" oninput="setMemo(\'' + c.id + '\',\'iv\',this.value)">' +
-            (st.absent ? '' : '<button class="btn sm" style="margin-left:auto;background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)" onclick="askAbsent(\'' + c.id + '\')">면접 미참여 처리</button>')) +
+          : '<input type="date" data-mk="date" value="' + esc(st.memo.date || '') + '" oninput="setMemo(\'' + c.id + '\',\'date\',this.value)">' +
+            '<input type="time" data-mk="time" value="' + esc(st.memo.time || '') + '" oninput="setMemo(\'' + c.id + '\',\'time\',this.value)">' +
+            '<input type="text" data-mk="iv" placeholder="면접관" style="width:130px" value="' + esc(st.memo.iv || '') + '" oninput="setMemo(\'' + c.id + '\',\'iv\',this.value)">' +
+            (st.absent ? '' : '<button class="btn" style="margin-left:auto;background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)" onclick="askAbsent(\'' + c.id + '\')">면접 미참여 처리</button>')) +
     '</div></div>';
 
   out += '<div class="subnav noprint"><div class="in">' +
     [['s-career', '경력'], ['s-op', '서류 소견'], ['s-key', '★ 중점 4영역'], ['s-case', '로직 케이스'], ['s-eval', '평가표'], ['s-final', '종합 판정']]
       .map(function (x) { return '<a href="#" onclick="event.preventDefault();jump(\'' + x[0] + '\')">' + x[1] + '</a>'; }).join('') +
-    '<span class="live">' + (w.n ? w.t + ' / 100 · ' + w.n + '/' + D.RUBRIC.length : '미채점') + (st.verdict ? ' · ' + vlabel(st) : '') + '</span>' +
-    '</div></div>';
+    '<span class="live">' + (w.n ? w.t + ' / 100 · ' + w.n + '/' + D.RUBRIC.length : '미채점') + (st.verdict ? ' · ' + esc(vlabel(st)) : '') + '</span></div></div>';
 
-  out += '<div class="' + (st.absent ? 'dim' : '') + '">';
+  out += '<div class="' + (st.absent ? 'dim' : '') + '"' + (st.absent ? ' inert' : '') + '>';
 
   out += secH('s-career', '01', '경력 이력', esc(c.total)) + '<div class="card"><div class="tl">' +
     c.career.map(function (r) { return '<div class="it"><div class="when">' + esc(r[0]) + '</div><div class="org">' + esc(r[1]) + '</div><div class="what">' + esc(r[2]) + '</div></div>'; }).join('') +
@@ -236,18 +288,17 @@ function viewCand(c) {
 
   out += secH('s-op', '02', '서류 소견', '이력서 기반 · 면접에서 검증') + '<div class="grid2">' +
     '<div class="card op plus"><h3><span class="tag g">강점</span></h3><ul>' + c.strengths.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul></div>' +
-    '<div class="card op minus"><h3><span class="tag y">확인 필요</span></h3><ul>' + c.concerns.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul></div>' +
-    '</div>' +
+    '<div class="card op minus"><h3><span class="tag y">확인 필요</span></h3><ul>' + c.concerns.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul></div></div>' +
     '<div class="card" style="margin-top:15px"><p class="lbl2">맞춤 질문 (이 지원자 전용)</p><ul style="margin:0;padding-left:19px">' +
     c.questions.map(function (q) { return '<li style="margin:7px 0;font-size:14.8px;line-height:1.6">' + esc(q) + '</li>'; }).join('') + '</ul></div></section>';
 
   out += secH('s-key', '03', '★ 대표님 중점 확인 4영역', '별도 기록 · 점수는 평가표에 자동 반영') +
     D.KEYQ.map(function (k) {
-      var r = rub[k.rubric];
-      return '<div class="key"><div class="band" style="background:' + k.color + '"><h3>' + esc(k.title) + '</h3><span class="to">→ 평가표 「' + esc(r.name) + '」 ' + r.w + '점</span></div>' +
+      var r = rub[k.rubric] || { name: k.title, w: 0 };
+      var col = /^#[0-9A-Fa-f]{3,8}$/.test(String(k.color)) ? k.color : '#7A4099';
+      return '<div class="key"><div class="band" style="background:' + col + '"><h3>' + esc(k.title) + '</h3><span class="to">→ 평가표 「' + esc(r.name) + '」 ' + r.w + '점</span></div>' +
         '<div class="body"><ul class="guide editonly">' + k.guide.map(function (g) { return '<li>' + esc(g) + '</li>'; }).join('') + '</ul>' +
-        '<p class="scale editonly">' + esc(k.scale) + '</p>' +
-        ta('key_' + k.key, '실제 사례 · 발언 그대로 · 수준 · 인상', 155) +
+        '<p class="scale editonly">' + esc(k.scale) + '</p>' + ta('key_' + k.key, '실제 사례 · 발언 그대로 · 수준 · 인상', 155) +
         '<div class="scorerow"><span class="lbl">점수</span>' + sc(k.rubric) + '</div></div></div>';
     }).join('') + '</section>';
 
@@ -260,8 +311,7 @@ function viewCand(c) {
     D.RUBRIC.map(function (r) {
       return '<div class="ev"><div><div class="nm">' + esc(r.name) + '<span>' + r.w + '점</span></div>' +
         '<div class="anc"><b>5</b> ' + esc(r.a5) + ' &nbsp;·&nbsp; <b>3</b> ' + esc(r.a3) + ' &nbsp;·&nbsp; <b>1</b> ' + esc(r.a1) + '</div></div>' + sc(r.key) + '</div>';
-    }).join('') +
-    '<div style="margin-top:17px">' + ta('evidence', '점수 근거 메모 (구체 발언 · 사례)', 108) + '</div></div></section>';
+    }).join('') + '<div style="margin-top:17px">' + ta('evidence', '점수 근거 메모 (구체 발언 · 사례)', 108) + '</div></div></section>';
 
   out += secH('s-flag', '06', '레드 플래그 · 처우', fl.length ? fl.length + '건' : '') + '<div class="grid2">' +
     '<div class="card">' + D.FLAGS.map(function (f, i) {
@@ -278,17 +328,16 @@ function viewCand(c) {
     '<p>설명 못 해도 됩니다 — 이 사람과 같이 일하고 싶은가. 5 확신 · 3 비교해 봐야 · 1 아니다</p>' + sc('gut') + '</div>' +
     '<div class="card"><div class="final">' +
     '<div class="bigcard"><div class="n">' + (w.n ? w.t : '–') + '<small> /100</small></div><div class="bar"><i style="width:' + w.t + '%"></i></div>' +
-    '<div class="sug">' + (w.n ? (w.n + '/' + D.RUBRIC.length + ' 항목 · 자동 제안 <b>' + v.label + '</b><br>' + esc(v.desc)) : '점수를 매기면 판정이 제안됩니다') + '</div></div>' +
+    '<div class="sug">' + (w.n ? (w.n + '/' + D.RUBRIC.length + ' 항목 · 자동 제안 <b>' + esc(v.label) + '</b><br>' + esc(v.desc)) : '점수를 매기면 판정이 제안됩니다') + '</div></div>' +
     '<div><p class="lbl2">최종 판정 (면접관 결정)</p><div class="verd">' +
-    D.VERDICTS.map(function (x) { return '<button class="' + x.key + (st.verdict === x.key ? ' on' : '') + '" onclick="setVerdict(\'' + c.id + '\',\'' + x.key + '\')">' + x.label + '</button>'; }).join('') +
+    D.VERDICTS.map(function (x) { return '<button type="button" class="' + x.key + (st.verdict === x.key ? ' on' : '') + '" onclick="setVerdict(\'' + c.id + '\',\'' + x.key + '\')">' + esc(x.label) + '</button>'; }).join('') +
     (RO && !st.verdict ? '<span class="mut">미판정</span>' : '') + '</div>' +
     '<p class="lbl2" style="margin-top:17px">2차(임원) 면접 추천</p><div class="verd">' +
-    ['Y', 'H', 'N'].map(function (k) { return '<button class="' + (k === 'Y' ? 'H' : k === 'H' ? 'LN' : 'NH') + (st.rec === k ? ' on' : '') + '" onclick="setRec(\'' + c.id + '\',\'' + k + '\')">' + recLabel(k) + '</button>'; }).join('') +
+    ['Y', 'H', 'N'].map(function (k) { return '<button type="button" class="' + (k === 'Y' ? 'H' : k === 'H' ? 'LN' : 'NH') + (st.rec === k ? ' on' : '') + '" onclick="setRec(\'' + c.id + '\',\'' + k + '\')">' + recLabel(k) + '</button>'; }).join('') +
     (RO && !st.rec ? '<span class="mut">–</span>' : '') + '</div></div></div>' +
     '<p class="lbl2" style="margin-top:20px">총평 (대표님 보고용 — 강점 / 우려 / 추천 이유 / 확신도)</p>' + ta('final', '', 180) + '</div></section>';
 
-  out += '</div>';
-  return out;
+  return out + '</div>';
 }
 window.jump = function (id) { var el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
@@ -303,23 +352,23 @@ function viewCompare() {
     var ck = D.CASE.checks.filter(function (f, i) { return r.st.checks[i]; }).length;
     var vv = r.st.verdict ? vlabel(r.st) : '';
     return '<tr><td><a href="#/c/' + r.c.id + '"><b>' + esc(r.c.name) + '</b></a></td><td class="sm">' + esc(r.c.age) + '<br>' + esc(r.c.total) + '</td>' +
-      D.RUBRIC.map(function (x) { return '<td class="num">' + (r.st.scores[x.key] || '–') + '</td>'; }).join('') +
+      D.RUBRIC.map(function (x) { return '<td class="num">' + (sc15(r.st.scores[x.key]) || '–') + '</td>'; }).join('') +
       '<td class="num">' + (r.w.n ? ck : '–') + '</td><td class="num">' + (fl ? '<span class="tag r">' + fl + '</span>' : '–') + '</td>' +
       '<td class="num" style="font-size:17px;color:var(--p)">' + (r.w.n ? r.w.t : '–') + '</td>' +
       '<td>' + (vv ? '<span class="tag ' + (r.st.verdict === 'SH' || r.st.verdict === 'H' ? 'g' : r.st.verdict === 'LN' ? 'y' : 'r') + '">' + esc(vv) + '</span>' : '–') + '</td>' +
       '<td>' + recLabel(r.st.rec) + '</td></tr>';
   }).join('');
-  var keyTbl = '<tr><th style="width:92px">후보</th>' + D.KEYQ.map(function (k) { return '<th style="color:' + k.color + '">' + esc(KSHORT[k.key]) + '</th>'; }).join('') + '<th>총평</th></tr>' +
+  var keyTbl = '<tr><th style="width:92px">후보</th>' + D.KEYQ.map(function (k) { return '<th style="color:' + (/^#[0-9A-Fa-f]{3,8}$/.test(String(k.color)) ? k.color : '#7A4099') + '">' + esc(KSHORT[k.key] || k.title) + '</th>'; }).join('') + '<th>총평</th></tr>' +
     rs.filter(function (r) { return !r.absent; }).map(function (r) {
       return '<tr><td><b>' + esc(r.c.name) + '</b><br><span class="sm mut">' + (r.w.n ? r.w.t + '점' : '–') + '</span></td>' +
-        D.KEYQ.map(function (k) { return '<td class="sm"><span class="tag">' + (r.st.scores[k.rubric] || '–') + '</span> ' + (esc(r.st.memo['key_' + k.key]) || '<span class="mut">–</span>') + '</td>'; }).join('') +
+        D.KEYQ.map(function (k) { return '<td class="sm"><span class="tag">' + (sc15(r.st.scores[k.rubric]) || '–') + '</span> ' + (esc(r.st.memo['key_' + k.key]) || '<span class="mut">–</span>') + '</td>'; }).join('') +
         '<td class="sm">' + (esc(r.st.memo.final) || '<span class="mut">–</span>') + '</td></tr>';
     }).join('');
   var info = '<tr><th>이름</th><th>성별·나이</th><th>연락처</th><th>이메일</th><th>학력</th><th>총 경력 · 상태</th><th>희망연봉</th></tr>' +
     D.CANDIDATES.map(function (c) {
       return '<tr><td><b>' + esc(c.name) + '</b></td><td>' + esc(c.gender) + ' · ' + esc(c.age) + '</td><td>' + esc(c.phone) + '</td><td>' + esc(c.email) + '</td>' +
         '<td class="sm">' + c.edu.map(esc).join('<br>') + '</td><td class="sm">' + esc(c.total) + '<br>' + esc(c.status) + '</td>' +
-        '<td class="sm">' + (esc(cs(c.id).memo.pay) || esc(c.salary)) + '</td></tr>';
+        '<td class="sm">' + (esc(ro(c.id).memo.pay) || esc(c.salary)) + '</td></tr>';
     }).join('');
   return '<div class="dash-hero"><h1>' + D.CANDIDATES.length + '명 비교표</h1><p>가중 점수 내림차순 · 미참여는 하단</p></div>' +
     '<section><div class="sec-h"><span class="num">01</span><h2>점수 · 판정</h2></div><div class="card" style="padding:15px"><div style="overflow:auto"><table>' + head + body + '</table></div></div></section>' +
@@ -343,8 +392,9 @@ function viewGuide() {
     '<h3 style="margin:0 0 8px;font-size:16.5px">나쁜 신호</h3><div class="note" style="background:var(--bad2)">' + esc(D.CASE.bad) + '</div></div></div></div></section>' +
   '<section><div class="sec-h"><span class="num">03</span><h2>★ 대표님 중점 확인 4영역</h2><span class="hint">질문 가이드</span></div>' +
     D.KEYQ.map(function (k) {
-      var r = D.RUBRIC.filter(function (x) { return x.key === k.rubric; })[0];
-      return '<div class="key"><div class="band" style="background:' + k.color + '"><h3>' + esc(k.title) + '</h3><span class="to">→ 「' + esc(r.name) + '」 ' + r.w + '점</span></div>' +
+      var r = D.RUBRIC.filter(function (x) { return x.key === k.rubric; })[0] || { name: k.title, w: 0 };
+      var col = /^#[0-9A-Fa-f]{3,8}$/.test(String(k.color)) ? k.color : '#7A4099';
+      return '<div class="key"><div class="band" style="background:' + col + '"><h3>' + esc(k.title) + '</h3><span class="to">→ 「' + esc(r.name) + '」 ' + r.w + '점</span></div>' +
         '<div class="body"><ul class="guide">' + k.guide.map(function (g) { return '<li>' + esc(g) + '</li>'; }).join('') + '</ul><p class="scale" style="margin:0">' + esc(k.scale) + '</p></div></div>';
     }).join('') + '</section>' +
   '<section><div class="sec-h"><span class="num">04</span><h2>채점 기준 · 판정</h2></div><div class="card">' +
@@ -352,8 +402,8 @@ function viewGuide() {
     '<div class="note" style="margin-top:17px">가중 점수 = Σ(점수/5 × 가중치), 100점 만점. <b>85+</b> Strong Hire · <b>70–84</b> Hire · <b>55–69</b> Lean No(보류) · <b>55 미만</b> No Hire. Hire 이상이면 2차(임원) 면접 추천.</div></div></section>';
 }
 
-/* ───────── 렌더 */
-function render() {
+/* ───────── 렌더 (에러 경계 포함) */
+function render_() {
   var r = route(), app = $('#app'), nav = $('#nav');
   nav.innerHTML = [['#/', '대시보드'], ['#/compare', '비교표'], ['#/guide', '평가 기준']]
     .map(function (x) { return '<a href="' + x[0] + '" class="' + ((location.hash || '#/') === x[0] ? 'on' : '') + '">' + x[1] + '</a>'; }).join('');
@@ -367,9 +417,34 @@ function render() {
   } else if (r.v === 'compare') { app.innerHTML = '<div class="view on">' + viewCompare() + '</div>'; document.title = '비교표 · 판옵티콘 채용'; }
   else if (r.v === 'guide') { app.innerHTML = '<div class="view on">' + viewGuide() + '</div>'; document.title = '평가 기준 · 판옵티콘 채용'; }
   else { app.innerHTML = '<div class="view on">' + viewHome() + '</div>'; document.title = '판옵티콘 채용 대시보드 · 프로덕트 기획자'; }
-  if (!S._savedAt) setChip('');
 }
-function rerender() { var y = window.scrollY; render(); window.scrollTo(0, y); }
+function render() {
+  if (!D || !D.CANDIDATES || !D.CANDIDATES.length) {
+    $('#app').innerHTML = '<div class="card" style="margin-top:26px"><h2>데이터 파일(data.js)을 불러오지 못했습니다</h2><p>새로고침하거나 네트워크 상태를 확인하세요.</p></div>';
+    return;
+  }
+  try { render_(); }
+  catch (e) {
+    try { console.error(e); } catch (e2) {}
+    $('#app').innerHTML = '<div class="card" style="margin-top:26px"><h2>화면을 그리지 못했습니다</h2>' +
+      '<p class="sm mut">' + esc(e && e.message) + '</p><p><b>기록은 아직 남아 있습니다.</b> 먼저 백업부터 하세요.</p>' +
+      '<button class="btn p" onclick="exportJSON()">기록 내보내기 (JSON)</button> ' +
+      '<button class="btn" onclick="location.hash=\'#/\';location.reload()">대시보드로</button></div>';
+  }
+}
+function rerender() {
+  var y = window.pageYOffset;
+  var a = document.activeElement;
+  var mk = (a && a.getAttribute) ? a.getAttribute('data-mk') : null;
+  var ss = 0, se = 0;
+  if (mk) { try { ss = a.selectionStart; se = a.selectionEnd; } catch (e) {} }
+  render();
+  window.scrollTo({ top: y, left: 0, behavior: 'auto' });
+  if (mk) {
+    var n = document.querySelector('[data-mk="' + mk + '"]');
+    if (n) { n.focus(); try { n.setSelectionRange(ss, se); } catch (e) {} }
+  }
+}
 
 /* ───────── 액션 */
 window.setScore = function (id, k, n) { if (RO) return; var st = cs(id); if (st.scores[k] === n) delete st.scores[k]; else st.scores[k] = n; touch(id); save(); rerender(); };
@@ -378,8 +453,14 @@ window.setCheck = function (id, i, v) { if (RO) return; cs(id).checks[i] = v; to
 window.setFlag = function (id, i, v) { if (RO) return; cs(id).flags[i] = v; touch(id); save(); rerender(); };
 window.setVerdict = function (id, k) { if (RO) return; var st = cs(id); st.verdict = st.verdict === k ? '' : k; touch(id); save(); rerender(); };
 window.setRec = function (id, k) { if (RO) return; var st = cs(id); st.rec = st.rec === k ? '' : k; touch(id); save(); rerender(); };
-window.setAbsent = function (id, v) { if (RO) return; var st = cs(id); if (v) st.absent = true; else delete st.absent; touch(id); save(); render(); };
-window.askAbsent = function (id) { var c = cand(id); if (confirm(c.name + ' 후보를 면접 미참여로 처리할까요?')) setAbsent(id, true); };
+window.setAbsent = function (id, v) { if (RO) return; var st = cs(id); if (v) st.absent = true; else { delete st.absent; delete st.memo.absentWhy; } touch(id); save(); rerender(); };
+window.askAbsent = function (id) {
+  var c = cand(id); if (!c) return;
+  if (!confirm(c.name + ' 후보를 면접 미참여로 처리할까요?')) return;
+  var why = prompt('사유 (선택 — 비워도 됩니다)', '') || '';
+  var st = cs(id); st.absent = true; if (why.trim()) st.memo.absentWhy = why.trim();
+  touch(id); save(); rerender();
+};
 window.toggleMode = function () { RO = !RO; rerender(); };
 
 /* ───────── 내보내기 */
@@ -388,6 +469,16 @@ function download(name, content, type) {
   a.href = URL.createObjectURL(new Blob([content], { type: type }));
   a.download = name; a.click();
   setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+}
+function cleanState() {
+  var out = {};
+  Object.keys(S).forEach(function (k) {
+    if (k.charAt(0) === '_') return;
+    if (isEmptyRec(S[k])) return;
+    out[k] = S[k];
+  });
+  out._savedAt = new Date().toISOString();
+  return out;
 }
 function buildSummary() {
   var today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -410,7 +501,7 @@ function buildSummary() {
     L.push('학력: ' + c.edu.join(' / '));
     L.push('현재: ' + c.status + (c.addr && c.addr !== '미기재' ? ' · ' + c.addr : ''));
     L.push('점수: ' + w.t + '/100 → ' + (st.verdict ? vlabel(st) : verdictFor(w.t).label + '(자동)') + ' · 2차 ' + recLabel(st.rec));
-    L.push('세부: ' + D.RUBRIC.map(function (x) { return SHORT[x.key] + ' ' + (st.scores[x.key] || '-'); }).join(' · ') + ' · 케이스 ' + ck + '/5');
+    L.push('세부: ' + D.RUBRIC.map(function (x) { return SHORT[x.key] + ' ' + (sc15(st.scores[x.key]) || '-'); }).join(' · ') + ' · 케이스 ' + ck + '/5');
     D.KEYQ.forEach(function (k) { var m = st.memo['key_' + k.key]; if (m) L.push('[' + KSHORT[k.key] + '] ' + oneLine(m)); });
     if (st.memo.case) L.push('[로직 케이스] ' + oneLine(st.memo.case));
     if (st.memo.evidence) L.push('[근거] ' + oneLine(st.memo.evidence));
@@ -423,14 +514,17 @@ function buildSummary() {
   if (absent.length) { L.push(''); L.push('━━━━━━━━━━━━━━━━'); absent.forEach(function (r) { L.push('⊘ ' + r.c.name + ' — 면접 미참여' + (r.st.memo.absentWhy ? ' (' + r.st.memo.absentWhy + ')' : '')); }); }
   return L.join('\n');
 }
+var _lastFocus = null;
 window.exportSummary = function () {
   var t = buildSummary(), m = $('#sumModal');
+  _lastFocus = document.activeElement;
   if (!m) {
     m = document.createElement('div'); m.id = 'sumModal'; m.className = 'modal';
+    m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
     m.innerHTML = '<div class="box"><div class="head"><b>전달용 요약본</b><span class="sm mut">카톡·메일에 그대로 붙여넣기</span><span style="flex:1"></span>' +
-      '<button class="btn p" id="sumCopy">복사</button><button class="btn" onclick="document.getElementById(\'sumModal\').remove()">닫기</button></div><textarea id="sumTa" readonly></textarea></div>';
+      '<button class="btn p" id="sumCopy">복사</button><button class="btn" onclick="closeSum()">닫기</button></div><textarea id="sumTa" readonly></textarea></div>';
     document.body.appendChild(m);
-    m.addEventListener('click', function (e) { if (e.target === m) m.remove(); });
+    m.addEventListener('click', function (e) { if (e.target === m) closeSum(); });
   }
   $('#sumTa').value = t;
   $('#sumCopy').onclick = function () {
@@ -439,37 +533,49 @@ window.exportSummary = function () {
     if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { $('#sumCopy').textContent = '✓ 복사됨'; }).catch(function () { $('#sumCopy').textContent = ok ? '✓ 복사됨' : 'Ctrl+C로 복사'; });
     else $('#sumCopy').textContent = ok ? '✓ 복사됨' : 'Ctrl+C로 복사';
   };
+  $('#sumCopy').focus();
 };
-window.exportJSON = function () {
-  var out = {}; Object.keys(S).forEach(function (k) { out[k] = S[k]; });
-  out._savedAt = new Date().toISOString();
-  download('판옵티콘_면접기록_' + stamp() + '.json', JSON.stringify(out, null, 1), 'application/json');
-};
+window.closeSum = function () { var m = $('#sumModal'); if (m) m.remove(); if (_lastFocus && _lastFocus.focus) _lastFocus.focus(); };
+window.exportJSON = function () { download('판옵티콘_면접기록_' + stamp() + '.json', JSON.stringify(cleanState(), null, 1), 'application/json'); };
 window.importJSON = function () {
   var f = $('#fileIn');
+  f.value = '';
   f.onchange = function () {
+    var file = f.files && f.files[0];
+    if (!file) return;
     var r = new FileReader();
+    r.onerror = function () { alert('파일을 읽지 못했습니다.'); };
     r.onload = function () {
-      try { var j = JSON.parse(r.result); S = mergeState(j.state || j, S); save(); render(); alert('불러왔습니다.'); }
-      catch (e) { alert('파일 형식 오류: ' + e.message); }
+      var j;
+      try { j = JSON.parse(r.result); } catch (e) { alert('파일 형식 오류: ' + e.message); return; }
+      if (!j || typeof j !== 'object') { alert('형식이 올바르지 않습니다.'); return; }
+      var inc = j.state || j;
+      var names = Object.keys(inc).filter(function (k) { return k.charAt(0) !== '_' && cand(k); });
+      if (!names.length) { alert('이 파일에는 불러올 후보 기록이 없습니다.'); return; }
+      if (!confirm('후보 ' + names.length + '명의 기록을 병합합니다.\n같은 후보는 타임스탬프가 최신인 쪽만 남습니다.\n계속할까요?')) return;
+      try { localStorage.setItem(KEY + '_bak_' + Date.now(), JSON.stringify(S)); } catch (e) {}
+      S = mergeState(inc, S);
+      save(); render();
+      alert('불러왔습니다. (' + names.length + '명)' + (S._dropped && S._dropped.length ? '\n병합에서 밀려난 기록 ' + S._dropped.length + '건은 콘솔에 표시했습니다.' : ''));
+      if (S._dropped && S._dropped.length) { try { console.warn('merge dropped:', S._dropped); } catch (e) {} }
     };
-    r.readAsText(f.files[0]);
+    r.readAsText(file);
   };
   f.click();
 };
 window.doPrint = function () { window.print(); };
 
-/* 로컬 HTML 파일 저장(선택) — File System Access API */
+/* 로컬 파일 자동 저장 (File System Access API) */
 window.linkFile = function () {
   if (!window.showSaveFilePicker) { alert('이 브라우저는 파일 직접 저장을 지원하지 않습니다. 「기록 내보내기」(JSON)를 쓰세요.'); return; }
   window.showSaveFilePicker({ suggestedName: '판옵티콘_면접기록.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] })
-    .then(function (h) { FH = h; return writeHandle(); })
-    .then(function () { alert('연결됐습니다. 지금부터 모든 입력이 이 파일에 자동 저장됩니다.'); })
+    .then(function (h) { FH = h; try { localStorage.setItem(KEY + '_fh', '1'); } catch (e) {} return writeHandle(); })
+    .then(function () { alert('연결됐습니다. 지금부터 입력이 이 파일에도 저장됩니다.\n※ 새로고침하면 연결이 끊기므로 그때는 다시 연결하세요.'); })
     .catch(function (e) { if (e && e.name !== 'AbortError') alert('저장 실패: ' + e.message); });
 };
 function writeHandle() {
   if (!FH) return Promise.resolve();
-  return FH.createWritable().then(function (w) { return w.write(JSON.stringify(S, null, 1)).then(function () { return w.close(); }); })
+  return FH.createWritable().then(function (w) { return w.write(JSON.stringify(cleanState(), null, 1)).then(function () { return w.close(); }); })
     .then(function () { setChip('파일에 저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })); })
     .catch(function () { setChip('⚠ 파일 저장 실패', true); });
 }
@@ -486,12 +592,16 @@ function buildMore() {
     '<button class="btn" onclick="resetLocal()">내 브라우저 기록 초기화</button>' +
     '<span class="sm mut" style="align-self:center">공용 기록(results.json)은 유지됩니다</span></div>';
   var st = document.createElement('style');
-  st.textContent = '#more.open{display:block!important}';
+  st.textContent = '#more.open{display:block!important}' +
+    '.btn:focus-visible,.score button:focus-visible,.verd button:focus-visible,.stat:focus-visible,.pcard:focus-visible,.segs button:focus-visible{outline:3px solid #7A4099;outline-offset:2px}' +
+    '.stat{border:1px solid rgba(255,255,255,.16);font:inherit;text-align:left;width:100%}' +
+    '@media(max-width:720px){.hero-ph{--inifs:30px}.ph{--inifs:34px}}';
   document.head.appendChild(st);
 }
 window.resetLocal = function () {
   if (!confirm('이 브라우저에 저장된 채점 기록을 지웁니다. 공용 기록은 남습니다. 계속할까요?')) return;
-  localStorage.removeItem(KEY); location.reload();
+  try { localStorage.removeItem(KEY); localStorage.removeItem(KEY + '_fh'); } catch (e) {}
+  location.reload();
 };
 
 /* ───────── 부팅 */
@@ -499,9 +609,16 @@ function boot(base) {
   S = mergeState(base, loadLocal());
   buildMore();
   window.addEventListener('hashchange', render);
-  window.addEventListener('beforeprint', function () { document.body.classList.add('printing'); });
+  window.addEventListener('beforeprint', function () { if (!RO) { _printRO = true; RO = true; render(); } });
+  window.addEventListener('afterprint', function () { if (_printRO) { _printRO = false; RO = false; render(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if ($('#sumModal')) closeSum(); else $('#more').classList.remove('open'); } });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden' && FH) { clearTimeout(WT); writeHandle(); } });
   render();
-  if (S._base) setChip('공용 기록 ' + new Date(S._base).toLocaleDateString('ko-KR') + ' 반영됨');
+  if (S._dropped && S._dropped.length) {
+    setChip('⚠ 병합에서 밀려난 기록 ' + S._dropped.length + '건 (콘솔 확인)', true);
+    try { console.warn('merge dropped:', S._dropped); } catch (e) {}
+  } else if (S._base) setChip('공용 기록 ' + new Date(S._base).toLocaleDateString('ko-KR') + ' 반영됨');
+  try { if (!FH && localStorage.getItem(KEY + '_fh')) setChip('⚠ 파일 자동저장 연결 끊김 — ⋯ 메뉴에서 다시 연결', true); } catch (e) {}
 }
 fetch('results.json', { cache: 'no-store' })
   .then(function (r) { return r.ok ? r.json() : {}; })
