@@ -132,6 +132,12 @@ body.review .cardout{display:none}
 .pname{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .pname h3{margin:0;font-size:20px;font-weight:800;letter-spacing:-.03em}
 .pname span{font-size:12.5px;color:var(--mut);font-weight:500}
+.ptel{display:inline-flex;align-items:center;gap:6px;width:fit-content;font-size:13px;font-weight:700;color:var(--ink2);letter-spacing:.01em;font-variant-numeric:tabular-nums;
+  background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:4px 10px;margin-top:-2px;transition:.12s}
+a.ptel:hover{background:var(--p2);border-color:var(--p3);color:var(--p)}
+.ptel svg{opacity:.5;flex:none}
+a.ptel:hover svg{opacity:1}
+.ptel.none{color:var(--mut2);font-weight:600}
 .meta-row{display:flex;gap:6px;flex-wrap:wrap}
 .tag{font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:7px;background:var(--p2);color:var(--p)}
 .tag.g{background:var(--ok2);color:var(--ok)}
@@ -404,8 +410,8 @@ body.review .editonly{display:none}
 <input type="file" id="fileIn" accept="application/json" style="display:none">
 
 <!-- ?v= 는 배포할 때마다 올려 주세요. 브라우저 캐시 때문에 옛 파일이 내려가는 걸 막습니다. -->
-<script src="config.js?v=6"></script>
-<script src="data.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="data.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

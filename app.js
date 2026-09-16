@@ -193,6 +193,16 @@ function sbPoll() {
 }
 function touch(id) { cs(id)._ts = new Date().toISOString(); }
 
+/* ───────── 전화번호 (카드용 — 눌러서 바로 걸기) */
+var PHICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg>';
+function telHTML(p) {
+  var s = String(p || '').trim();
+  if (!s || s === '미기재') return '<span class="ptel none">' + PHICON + ' 연락처 미기재</span>';
+  var d = s.replace(/[^0-9+]/g, '');
+  if (d.length < 9) return '<span class="ptel none">' + PHICON + ' ' + esc(s) + '</span>';
+  return '<a class="ptel" href="tel:' + esc(d) + '" onclick="event.stopPropagation()" title="' + esc(s) + ' 로 전화">' + PHICON + ' ' + esc(s) + '</a>';
+}
+
 /* ───────── 아바타 */
 function avatar(c) {
   if (c.photo) return '<img src="img/' + encodeURIComponent(c.id) + '.jpg" alt="' + esc(c.name) + ' 증명사진" loading="lazy">';
@@ -340,6 +350,7 @@ function cardHTML(r, i) {
       (w.n && !r.absent ? '<span class="sc"><b>' + w.t + '</b><i>/ 100</i></span>' : '') + dpill +
     '</div><div class="pbody">' +
       '<div class="pname"><h3>' + esc(c.name) + '</h3><span>' + esc(c.gender) + ' · ' + esc(c.age) + '</span></div>' +
+      telHTML(c.phone) +
       '<div class="meta-row">' + (tags.join('') || '<span class="tag n">미채점</span>') + '</div>' +
       '<p class="psum">' + esc(c.summary) + '</p>' +
       '<div class="pfoot"><span class="info">경력 ' + esc(String(c.total).split('(')[0].trim()) + '</span><div class="bars" aria-hidden="true">' + bars + '</div></div>' +
