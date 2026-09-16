@@ -163,7 +163,8 @@ function sbPush() {
   if (SBBUSY) { SBPEND = true; return; }
   var body = [];
   Object.keys(S).forEach(function (k) {
-    if (String(k).charAt(0) === '_' || isEmptyRec(S[k])) return;
+    if (String(k).charAt(0) === '_' || !S[k] || typeof S[k] !== 'object') return;
+    if (isEmptyRec(S[k]) && !S[k]._ts) return;   // 손댄 적 없는 빈 레코드는 올리지 않음
     body.push({ id: k, data: S[k], ts: S[k]._ts || new Date().toISOString() });
   });
   if (!body.length) return;

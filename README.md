@@ -62,37 +62,33 @@ img/<id>.jpg   증명사진 300×400 (이력서 PDF에서 추출)
 
 `config.js`가 비어 있으면 1번이 꺼지고 예전처럼 2 ⊕ 3 으로만 동작합니다. 그때는 홈 상단에 「이 브라우저에만 저장됩니다」 경고가 뜹니다.
 
-### 실시간 공유 켜기 (5분)
+### ✅ 현재 상태 — 실시간 공유 켜짐
 
-1. <https://supabase.com> 가입 → **New project** (무료 플랜)
-2. 왼쪽 **SQL Editor** → 아래 붙여넣고 **Run**
+2026-09-17 연결 완료. 상단 칩이 `✓ 모두에게 공유됨`으로 뜨면 정상입니다.
 
-```sql
-create table interviews (
-  id   text primary key,
-  data jsonb not null,
-  ts   timestamptz not null default now()
-);
-alter table interviews enable row level security;
-create policy "anon read"   on interviews for select using (true);
-create policy "anon insert" on interviews for insert with check (true);
-create policy "anon update" on interviews for update using (true) with check (true);
-```
+| 항목 | 값 |
+|---|---|
+| 프로젝트 | SJGPT's Org / **pano-hire** (ap-southeast-1) |
+| 대시보드 | <https://supabase.com/dashboard/project/owlpajgaghozhmxtaeww> |
+| 테이블 | `interviews` (id text PK · data jsonb · ts timestamptz) |
+| 키 | publishable 키 — 브라우저에 넣으라고 만들어진 공개용 키 |
 
-3. **Settings → API** 에서 두 값을 복사
-   - `Project URL` (예: `https://abcdefgh.supabase.co`)
-   - `anon` `public` 키 (공개용이라 노출돼도 됩니다)
-4. `config.js`의 `url` · `key`에 넣고 커밋 → 재배포
+입력하면 0.8초 뒤 클라우드에 올라가고, 다른 사람 화면은 **15초마다** (그리고 탭으로 돌아올 때) 자동 갱신됩니다.
 
-켜지면 상단 칩이 `✓ 실시간 공유 저장 켜짐` → 입력할 때마다 `✓ 모두에게 공유됨`으로 바뀝니다. 다른 사람 변경사항은 20초마다(그리고 탭으로 돌아올 때) 자동으로 가져옵니다.
+**검증 완료** — 브라우저 기록을 전부 지운 상태에서 링크를 열어 기록이 그대로 보이는 것을 확인했습니다. (= 대표님 PC 상태)
 
-> RLS 정책이 `anon`에게 열려 있습니다. **링크를 아는 사람은 기록을 수정할 수 있습니다.** 채용 종료 후에는 테이블을 지우세요.
+### ⚠️ 알아두실 것
 
-### 주의
-- Supabase가 꺼져 있으면 localStorage는 **브라우저마다 따로**입니다. 다른 PC에서는 보이지 않습니다.
-- 저장에 실패하면 상단에 ⚠ 경고가 뜹니다. 그때는 바로 **「기록 내보내기」**로 JSON을 받아두세요.
-- 내 채점을 커밋본으로 굳히려면: **「기록 내보내기」** → 그 파일을 `results.json`으로 커밋.
-- `⋯` 메뉴의 **「기록 파일에 자동 저장」**(크롬/엣지)을 쓰면 입력이 지정한 JSON 파일에도 계속 저장됩니다. 단 새로고침하면 연결이 끊깁니다.
+- **링크를 아는 사람은 기록을 읽고 고칠 수 있습니다.** 로그인이 없는 구조라 그렇습니다. 채용 종료 후 Supabase 프로젝트를 삭제하세요.
+- 삭제(DELETE)는 정책상 막혀 있어, 실수로 기록이 통째로 날아가지는 않습니다.
+- **배포 직후 최대 10분간** 예전 화면이 보일 수 있습니다 (GitHub Pages 캐시 `max-age=600`). 급하면 `Ctrl+F5`.
+- 코드·데이터를 고쳐 배포할 때는 `index.html`의 `?v=5` 숫자를 올리세요.
+
+### 백업 · 오프라인 경로 (그대로 유효)
+
+- 저장 실패 시 상단 ⚠ 경고 → **「대표님께 공유하기」**로 JSON을 받아두세요.
+- 그 JSON을 `results.json`으로 커밋하면 커밋본으로도 굳습니다.
+- `⋯` 메뉴의 **「기록 파일에 자동 저장」**(크롬/엣지)을 쓰면 지정한 JSON 파일에도 계속 저장됩니다. 단 새로고침하면 연결이 끊깁니다.
 
 ## 지원자 추가 방법
 
