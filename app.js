@@ -277,11 +277,34 @@ function viewHome() {
       '<div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
       '<input type="search" id="q" aria-label="지원자 검색" placeholder="이름 · 회사 · 경력 · 학교 검색" value="' + esc(Q) + '" oninput="setQ(this.value)"></div>' +
       '<div class="segs" role="group" aria-label="정렬">' + seg('score', '점수순') + seg('date', '면접일순') + seg('exp', '경력순') + seg('name', '이름순') + '</div>' +
-    '</div>' + gridHTML(list);
+    '</div><div id="gridwrap">' + gridHTML(list) + '</div>';
+}
+
+/* ───────── 홈 구역 나누기 */
+var SECTIONS = [
+  { key: 'next', cls: 'hot', t: '★ 대표님 2차 면접 대상', d: '1차 면접에서 추천된 후보 — 대표님 면접만 남았습니다' },
+  { key: 'pass', cls: 'ok', t: '최종 합격', d: '' },
+  { key: 'live', cls: '', t: '전형 진행 중', d: '면접 예정 · 1차 면접 완료' },
+  { key: 'out', cls: 'dim', t: '탈락 · 종료', d: '1차 탈락 · 최종 탈락 · 사퇴 · 면접 미참여' }
+];
+function sectionOf(r) {
+  if (r.absent || (r.outcome && r.outcome !== 'final_pass')) return 'out';
+  if (r.outcome === 'final_pass') return 'pass';
+  if (r.st.rec === 'Y') return 'next';
+  return 'live';
 }
 function gridHTML(list) {
-  return list.length ? '<div class="grid">' + list.map(cardHTML).join('') + '</div>'
-    : '<div class="empty"><b>해당하는 지원자가 없습니다</b>필터나 검색어를 바꿔보세요.</div>';
+  if (!list.length) return '<div class="empty"><b>해당하는 지원자가 없습니다</b>필터나 검색어를 바꿔보세요.</div>';
+  if (FILTER !== 'all') return '<div class="grid">' + list.map(cardHTML).join('') + '</div>';
+  var b = { next: [], pass: [], live: [], out: [] };
+  list.forEach(function (r, i) { b[sectionOf(r)].push({ r: r, i: i }); });
+  return SECTIONS.map(function (s) {
+    var g = b[s.key];
+    if (!g.length) return '';
+    return '<section class="gsec ' + s.cls + '"><div class="gsec-h"><h2>' + s.t + '</h2>' +
+      '<span class="n">' + g.length + '</span>' + (s.d ? '<span class="d">' + s.d + '</span>' : '') + '</div>' +
+      '<div class="grid">' + g.map(function (x) { return cardHTML(x.r, x.i); }).join('') + '</div></section>';
+  }).join('');
 }
 function cardHTML(r, i) {
   var c = r.c, st = r.st, w = r.w;
@@ -334,8 +357,8 @@ window.setSort = function (s) { SORT = s; render(); };
 window.setQ = function (v) {
   Q = v; clearTimeout(QT);
   QT = setTimeout(function () {
-    var el = $('#app .grid') || $('#app .empty');
-    if (el) el.outerHTML = gridHTML(filtered());
+    var el = $('#gridwrap');
+    if (el) el.innerHTML = gridHTML(filtered());
   }, 130);
 };
 
