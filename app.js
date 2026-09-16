@@ -688,7 +688,12 @@ window.exportSummary = function () {
   $('#sumCopy').focus();
 };
 window.closeSum = function () { var m = $('#sumModal'); if (m) m.remove(); if (_lastFocus && _lastFocus.focus) _lastFocus.focus(); };
-window.exportJSON = function () { download('판옵티콘_면접기록_' + stamp() + '.json', JSON.stringify(cleanState(), null, 1), 'application/json'); };
+window.exportJSON = function () {
+  download('판옵티콘_면접기록.json', JSON.stringify(cleanState(), null, 1), 'application/json');
+  if (!SB) setTimeout(function () {
+    alert('「다운로드」 폴더에 판옵티콘_면접기록.json 이 저장됐습니다.\n\n클로드에게 "올려줘" 라고만 하면\n대표님이 보는 화면에 그대로 반영됩니다.');
+  }, 400);
+};
 window.importJSON = function () {
   var f = $('#fileIn');
   f.value = '';
