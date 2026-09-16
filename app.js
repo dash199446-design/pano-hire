@@ -198,9 +198,12 @@ var PHICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke
 function telHTML(p) {
   var s = String(p || '').trim();
   if (!s || s === '미기재') return '<span class="ptel none">' + PHICON + ' 연락처 미기재</span>';
-  var d = s.replace(/[^0-9+]/g, '');
-  if (d.length < 9) return '<span class="ptel none">' + PHICON + ' ' + esc(s) + '</span>';
-  return '<a class="ptel" href="tel:' + esc(d) + '" onclick="event.stopPropagation()" title="' + esc(s) + ' 로 전화">' + PHICON + ' ' + esc(s) + '</a>';
+  // 번호가 여러 개면 첫 번째(휴대폰)만 걸기 대상으로 사용
+  var m = s.match(/0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/);
+  if (!m) return '<span class="ptel none">' + PHICON + ' ' + esc(s) + '</span>';
+  var d = m[0].replace(/[^0-9]/g, '');
+  return '<a class="ptel" href="tel:' + esc(d) + '" onclick="event.stopPropagation()" title="' + esc(s) + '">' + PHICON + ' ' + esc(m[0]) +
+    (s.replace(m[0], '').replace(/[()\s·,]/g, '') ? ' <i>외</i>' : '') + '</a>';
 }
 
 /* ───────── 아바타 */
