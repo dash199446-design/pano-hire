@@ -1,7 +1,8 @@
-/* 판옵티콘 채용 대시보드 — app.js (v4.1, 코드리뷰 반영)
-   · 홈: 인물 카드 그리드 (사진 + 요약 + 점수)
-   · 상세: 인물별 랜딩 페이지 + 채점
-   · 상태: results.json(공용 커밋본) ⊕ localStorage(내 브라우저) — 후보별 타임스탬프 병합
+/* 판옵티콘 채용 대시보드 — app.js (v5)
+   · 홈: 인물 카드 그리드 (사진 + 면접일 + 전형 결과 + 요약 + 점수)
+   · 상세: 인물별 랜딩 페이지 + 채점 + 전형 결과 버튼
+   · 필터: 전체 / 면접 예정 / 면접 완료 / 대표님 면접 대상 / 최종 합격 / 탈락·종료
+   · 상태: Supabase(실시간 공용) ⊕ results.json(커밋본) ⊕ localStorage — 후보별 타임스탬프 병합
 */
 (function () {
 'use strict';
@@ -12,7 +13,23 @@ var LABELS = { 1: '미흡', 2: '부족', 3: '보통', 4: '우수', 5: '탁월' }
 var SHORT = { logic: '로직', tech: '협업', biz: '사업', solve: '문제', ai: 'AI', fit: '인성', comm: '소통', gut: '직감' };
 var KSHORT = { collab: '개발·디자인·경영진 협업', ai: 'AI 활용', biz: '사업적 사고', person: '인성·성격' };
 var AVCOL = [['#7A4099', '#B07FCB'], ['#2F6FDE', '#6FA3F0'], ['#0E8F6E', '#4FC3A1'], ['#C97B00', '#F0B24F'], ['#C2413B', '#E5837E'], ['#4E2566', '#8B5FA8'], ['#1F7A8C', '#5BB3C4']];
-var EMPTY = { scores: {}, memo: {}, flags: {}, checks: {}, verdict: '', rec: '' };
+var EMPTY = { scores: {}, memo: {}, flags: {}, checks: {}, verdict: '', rec: '', outcome: '' };
+/* 전형 결과 — 1차 면접 이후의 최종 상태 */
+var OUT = [
+  { key: 'r1fail',     label: '1차 탈락',  short: '1차 탈락', cls: 'r', vc: 'NH', desc: '1차 면접에서 종료되었습니다.' },
+  { key: 'final_pass', label: '최종 합격',  short: '최종 합격', cls: 'g', vc: 'SH', desc: '대표님 최종 면접을 통과했습니다.' },
+  { key: 'final_fail', label: '최종 탈락',  short: '최종 탈락', cls: 'r', vc: 'NH', desc: '대표님 최종 면접에서 탈락했습니다.' },
+  { key: 'declined',   label: '지원자 사퇴', short: '사퇴',    cls: 'n', vc: 'LN', desc: '지원자가 전형을 중단했습니다.' }
+];
+function outMeta(k) { for (var i = 0; i < OUT.length; i++) if (OUT[i].key === k) return OUT[i]; return null; }
+var WD = ['일', '월', '화', '수', '목', '금', '토'];
+function parseD(s) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); if (!m) return null; var d = new Date(+m[1], +m[2] - 1, +m[3]); return isNaN(d.getTime()) ? null : d; }
+function fmtDate(s, full) {
+  var d = parseD(s); if (!d) return '';
+  if (full) return d.getFullYear() + '. ' + (d.getMonth() + 1) + '. ' + d.getDate() + '. (' + WD[d.getDay()] + ')';
+  return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')';
+}
+function isFuture(s) { var d = parseD(s); if (!d) return false; var t = new Date(); t.setHours(0, 0, 0, 0); return d.getTime() >= t.getTime(); }
 
 var S = {};
 var RO = false, _printRO = false;
@@ -36,6 +53,7 @@ function cs(id) {
   if (!s.checks || typeof s.checks !== 'object') s.checks = {};
   if (typeof s.verdict !== 'string') s.verdict = '';
   if (typeof s.rec !== 'string') s.rec = '';
+  if (typeof s.outcome !== 'string') s.outcome = '';
   return s;
 }
 /* 읽기용: 레코드를 새로 만들지 않음 */
@@ -49,6 +67,7 @@ function ro(id) {
     checks: s.checks && typeof s.checks === 'object' ? s.checks : {},
     verdict: typeof s.verdict === 'string' ? s.verdict : '',
     rec: typeof s.rec === 'string' ? s.rec : '',
+    outcome: typeof s.outcome === 'string' ? s.outcome : '',
     absent: !!s.absent, _ts: s._ts
   };
 }
@@ -63,7 +82,7 @@ function sc15(v) { v = parseInt(v, 10); return (v >= 1 && v <= 5) ? v : null; }
 function loadLocal() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
 function isEmptyRec(r) {
   if (!r || typeof r !== 'object') return true;
-  if (r.absent || r.verdict || r.rec) return false;
+  if (r.absent || r.verdict || r.rec || r.outcome) return false;
   var has = function (o) { return !!o && typeof o === 'object' && Object.keys(o).some(function (k) { return o[k] !== '' && o[k] != null && o[k] !== false; }); };
   return !has(r.scores) && !has(r.memo) && !has(r.flags) && !has(r.checks);
 }
@@ -104,8 +123,72 @@ function save() {
     return;
   }
   save._warned = false;
-  setChip(FH ? '파일에 저장 중…' : '이 브라우저에 저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), !FH);
+  if (SB) setChip('공유 저장 중…');
+  else setChip(FH ? '파일에 저장 중…' : '이 브라우저에만 저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), !FH);
   scheduleWrite();
+  sbSchedule();
+}
+
+/* ───────── 실시간 공유 저장소 (Supabase) — config.js 가 비어 있으면 자동으로 꺼짐 */
+var SB = (window.SB && window.SB.url && window.SB.key) ? window.SB : null;
+var SBT = null, SBBUSY = false, SBPEND = false;
+function sbNote() {
+  return SB ? '' :
+    '<div class="sbnote noprint">⚠ 지금은 <b>이 브라우저에만</b> 기록이 남습니다 — 다른 사람에게는 보이지 않습니다. ' +
+    '실시간 공유를 켜려면 <code>config.js</code>에 Supabase 주소·키를 넣으세요.</div>';
+}
+function sbHead(extra) {
+  var h = { apikey: SB.key, Authorization: 'Bearer ' + SB.key, 'Content-Type': 'application/json' };
+  if (extra) h.Prefer = extra;
+  return h;
+}
+function sbUrl(q) { return String(SB.url).replace(/\/+$/, '') + '/rest/v1/' + (SB.table || 'interviews') + (q || ''); }
+function sbLoad() {
+  if (!SB) return Promise.resolve(null);
+  return fetch(sbUrl('?select=id,data,ts'), { headers: sbHead(), cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (list) {
+      var o = {};
+      (list || []).forEach(function (x) {
+        if (!x || !x.id || String(x.id).charAt(0) === '_') return;
+        var d = x.data;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+        if (d && typeof d === 'object') { if (!d._ts && x.ts) d._ts = x.ts; o[x.id] = d; }
+      });
+      return o;
+    });
+}
+function sbPush() {
+  if (!SB) return;
+  if (SBBUSY) { SBPEND = true; return; }
+  var body = [];
+  Object.keys(S).forEach(function (k) {
+    if (String(k).charAt(0) === '_' || isEmptyRec(S[k])) return;
+    body.push({ id: k, data: S[k], ts: S[k]._ts || new Date().toISOString() });
+  });
+  if (!body.length) return;
+  SBBUSY = true;
+  fetch(sbUrl('?on_conflict=id'), { method: 'POST', headers: sbHead('resolution=merge-duplicates,return=minimal'), body: JSON.stringify(body) })
+    .then(function (r) {
+      SBBUSY = false;
+      if (!r.ok) { setChip('⚠ 공유 저장 실패 (HTTP ' + r.status + ') — 내 브라우저에는 저장됨', true); return; }
+      setChip('✓ 모두에게 공유됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }));
+      if (SBPEND) { SBPEND = false; sbPush(); }
+    })
+    .catch(function () { SBBUSY = false; setChip('⚠ 공유 저장 실패 (네트워크) — 내 브라우저에는 저장됨', true); });
+}
+function sbSchedule() { if (!SB) return; clearTimeout(SBT); SBT = setTimeout(sbPush, 800); }
+function sbPoll() {
+  if (!SB || document.hidden) return;
+  sbLoad().then(function (remote) {
+    if (!remote) return;
+    var before = JSON.stringify(cleanState());
+    S = mergeState(remote, S);
+    if (JSON.stringify(cleanState()) === before) return;
+    var el = document.activeElement;
+    if (el && /^(TEXTAREA|INPUT)$/.test(el.tagName)) return;   // 입력 중이면 화면은 그대로
+    rerender();
+  }).catch(function () {});
 }
 function touch(id) { cs(id)._ts = new Date().toISOString(); }
 
@@ -134,25 +217,33 @@ function route() {
 function rows() {
   return D.CANDIDATES.map(function (c) {
     var st = ro(c.id), w = weighted(c.id);
-    return { c: c, st: st, w: w, absent: !!st.absent, scored: !st.absent && w.n > 0 };
+    return {
+      c: c, st: st, w: w,
+      absent: !!st.absent, outcome: st.outcome || '', date: st.memo.date || '',
+      scored: !st.absent && w.n > 0
+    };
   });
 }
+/* 대시보드 필터 — 통계·목록이 같은 규칙을 씁니다 */
+function inFilter(r, k) {
+  switch (k) {
+    case 'all': return true;
+    case 'todo': return !r.absent && !r.outcome && !r.w.n;                        // 아직 안 본 사람
+    case 'done': return !r.absent && !r.outcome && r.w.n > 0;                     // 1차 면접 완료
+    case 'next': return !r.absent && !r.outcome && r.st.rec === 'Y';              // 대표님이 면접 볼 사람
+    case 'pass': return r.outcome === 'final_pass';
+    case 'out': return r.absent || (!!r.outcome && r.outcome !== 'final_pass');   // 탈락·사퇴·미참여
+  }
+  return true;
+}
 function statsOf(rs) {
-  return {
-    total: rs.length,
-    done: rs.filter(function (r) { return r.scored; }).length,
-    rec: rs.filter(function (r) { return r.st.rec === 'Y'; }).length,
-    absent: rs.filter(function (r) { return r.absent; }).length,
-    pending: rs.filter(function (r) { return !r.absent && !r.w.n; }).length
-  };
+  var n = function (k) { return rs.filter(function (r) { return inFilter(r, k); }).length; };
+  return { total: rs.length, todo: n('todo'), done: n('done'), next: n('next'), pass: n('pass'), out: n('out') };
 }
 function months(t) { var m = String(t).match(/(\d+)\s*년(?:\s*(\d+)\s*개월)?/); if (m) return (+m[1]) * 12 + (+(m[2] || 0)); var m2 = String(t).match(/(\d+)\s*개월/); return m2 ? +m2[1] : 0; }
 function filtered() {
   var rs = rows();
-  if (FILTER === 'done') rs = rs.filter(function (r) { return r.scored; });
-  else if (FILTER === 'rec') rs = rs.filter(function (r) { return r.st.rec === 'Y'; });
-  else if (FILTER === 'pending') rs = rs.filter(function (r) { return !r.absent && !r.w.n; });
-  else if (FILTER === 'absent') rs = rs.filter(function (r) { return r.absent; });
+  if (FILTER !== 'all') rs = rs.filter(function (r) { return inFilter(r, FILTER); });
   if (Q) {
     var q = Q.toLowerCase();
     rs = rs.filter(function (r) {
@@ -163,6 +254,7 @@ function filtered() {
   if (SORT === 'score') rs.sort(function (a, b) { return (b.absent ? -1 : b.w.t) - (a.absent ? -1 : a.w.t); });
   else if (SORT === 'name') rs.sort(function (a, b) { return a.c.name.localeCompare(b.c.name, 'ko'); });
   else if (SORT === 'exp') rs.sort(function (a, b) { return months(b.c.total) - months(a.c.total); });
+  else if (SORT === 'date') rs.sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
   return rs;
 }
 
@@ -175,13 +267,15 @@ function viewHome() {
     '<div class="dash-hero">' +
       '<h1>프로덕트 기획자 채용 현황</h1>' +
       '<p>' + esc(D.META.sub) + ' · ' + esc(D.META.date) + ' · ' + esc(D.META.owner) + '</p>' +
-      '<div class="stats">' + stat('all', st.total, '전체 지원자') + stat('done', st.done, '면접 완료') +
-        stat('rec', st.rec, '2차 추천') + stat('pending', st.pending, '면접 예정') + stat('absent', st.absent, '미참여') + '</div>' +
+      '<div class="stats">' +
+        stat('all', st.total, '전체') + stat('todo', st.todo, '면접 예정') + stat('done', st.done, '1차 면접 완료') +
+        stat('next', st.next, '★ 대표님 면접 대상') + stat('pass', st.pass, '최종 합격') + stat('out', st.out, '탈락 · 종료') +
+      '</div>' + sbNote() +
     '</div>' +
     '<div class="toolbar noprint">' +
       '<div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
       '<input type="search" id="q" aria-label="지원자 검색" placeholder="이름 · 회사 · 경력 · 학교 검색" value="' + esc(Q) + '" oninput="setQ(this.value)"></div>' +
-      '<div class="segs" role="group" aria-label="정렬">' + seg('score', '점수순') + seg('exp', '경력순') + seg('name', '이름순') + '</div>' +
+      '<div class="segs" role="group" aria-label="정렬">' + seg('score', '점수순') + seg('date', '면접일순') + seg('exp', '경력순') + seg('name', '이름순') + '</div>' +
     '</div>' + gridHTML(list);
 }
 function gridHTML(list) {
@@ -190,14 +284,18 @@ function gridHTML(list) {
 }
 function cardHTML(r, i) {
   var c = r.c, st = r.st, w = r.w;
+  var om = outMeta(r.outcome);
+  var passed = r.outcome === 'final_pass';
+  var closed = r.absent || (!!om && !passed);   // 합격은 흐리게 처리하지 않음
   var v = st.verdict ? vlabel(st) : (w.n ? verdictFor(w.t).label : '');
   var vc = st.verdict === 'SH' || st.verdict === 'H' ? 'g' : st.verdict === 'LN' ? 'y' : st.verdict === 'NH' ? 'r' : 'n';
   var tags = [];
+  if (om) tags.push('<span class="tag ' + (om.cls === 'g' ? 'g' : om.cls === 'r' ? 'r' : 'n') + '">' + esc(om.label) + '</span>');
   if (r.absent) tags.push('<span class="tag n">⊘ 면접 미참여</span>');
-  else {
+  if (!r.absent) {
     if (v) tags.push('<span class="tag ' + (st.verdict ? vc : 'n') + '">' + esc(v) + (st.verdict ? '' : ' (자동)') + '</span>');
     if (st.rec) tags.push('<span class="tag ' + (st.rec === 'Y' ? 'g' : st.rec === 'H' ? 'y' : 'r') + '">2차 ' + recLabel(st.rec) + '</span>');
-    if (!w.n) tags.push('<span class="tag n">면접 예정</span>');
+    if (!w.n && !om) tags.push('<span class="tag n">면접 예정</span>');
     var fl = D.FLAGS.filter(function (f, i2) { return st.flags[i2]; }).length;
     if (fl) tags.push('<span class="tag r">⚠ ' + fl + '</span>');
   }
@@ -205,16 +303,28 @@ function cardHTML(r, i) {
     var s = sc15(st.scores[x.key]);
     return '<i class="' + (s ? 'f' : '') + '" style="height:' + (s ? 4 + s * 3.6 : 4) + 'px" title="' + esc(x.name) + ' ' + (s || '-') + '"></i>';
   }).join('');
-  return '<article class="pcard' + (r.absent ? ' absent' : '') + '" tabindex="0" role="link" aria-label="' + esc(c.name) + ' 상세 보기"' +
+  var dtxt = fmtDate(r.date), soon = dtxt && isFuture(r.date) && !w.n && !om && !r.absent;
+  var dpill = dtxt
+    ? '<span class="dt' + (soon ? ' soon' : '') + '">' + esc(dtxt) + (soon ? ' 예정' : ' 면접') + '</span>'
+    : (r.absent ? '' : '<span class="dt none">면접일 미정</span>');
+  return '<article class="pcard' + (r.absent ? ' absent' : '') + (closed ? ' closed' : '') +
+    (passed ? ' pass' : '') + '" tabindex="0" role="link" aria-label="' + esc(c.name) + ' 상세 보기"' +
     ' onclick="go(\'#/c/' + c.id + '\')" onkeydown="cardKey(event,\'' + c.id + '\')">' +
+    (om ? '<div class="rib ' + om.cls + '">' + esc(om.label) + '</div>' : '') +
     '<div class="ph">' + avatar(c) +
-      (SORT === 'score' && w.n && !r.absent ? '<span class="rk">#' + (i + 1) + '</span>' : '') +
-      (w.n && !r.absent ? '<span class="sc"><b>' + w.t + '</b><i>/ 100</i></span>' : '') +
+      (SORT === 'score' && w.n && !closed ? '<span class="rk">#' + (i + 1) + '</span>' : '') +
+      (w.n && !r.absent ? '<span class="sc"><b>' + w.t + '</b><i>/ 100</i></span>' : '') + dpill +
     '</div><div class="pbody">' +
       '<div class="pname"><h3>' + esc(c.name) + '</h3><span>' + esc(c.gender) + ' · ' + esc(c.age) + '</span></div>' +
       '<div class="meta-row">' + (tags.join('') || '<span class="tag n">미채점</span>') + '</div>' +
       '<p class="psum">' + esc(c.summary) + '</p>' +
       '<div class="pfoot"><span class="info">경력 ' + esc(String(c.total).split('(')[0].trim()) + '</span><div class="bars" aria-hidden="true">' + bars + '</div></div>' +
+      (RO || r.absent ? '' :
+        '<div class="cardout" onclick="event.stopPropagation()"><span class="cl">결과</span>' +
+        OUT.map(function (o) {
+          return '<button type="button" class="' + o.cls + (r.outcome === o.key ? ' on' : '') + '" title="' + esc(o.label) + '"' +
+            ' onclick="event.stopPropagation();setOutcome(\'' + c.id + '\',\'' + o.key + '\')">' + esc(o.short) + '</button>';
+        }).join('') + '</div>') +
     '</div></article>';
 }
 window.cardKey = function (e, id) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('#/c/' + id); } };
@@ -257,6 +367,14 @@ function viewCand(c) {
     out += '<div class="absent-banner"><div class="x" aria-hidden="true">⊘</div><div><h2>면접 미참여</h2><p>' + esc(c.name) + ' 후보는 면접에 참여하지 않았습니다' + (st.memo.absentWhy ? ' — ' + esc(st.memo.absentWhy) : '') + '. 평가 대상에서 제외됩니다.</p></div>' +
       (RO ? '' : '<div class="un"><button class="btn" onclick="setAbsent(\'' + c.id + '\',false)">미참여 취소</button></div>') + '</div>';
   }
+  var om = outMeta(st.outcome);
+  if (om) {
+    out += '<div class="out-banner ' + om.cls + '"><div class="x" aria-hidden="true">' + (om.cls === 'g' ? '✓' : om.cls === 'r' ? '✕' : '—') + '</div>' +
+      '<div><h2>' + esc(om.label) + '</h2><p>' + esc(c.name) + ' 후보 — ' + esc(om.desc) +
+      (st.memo.outWhy ? ' (' + esc(st.memo.outWhy) + ')' : '') +
+      (st.memo.outAt ? ' · ' + esc(fmtDate(st.memo.outAt, true) || st.memo.outAt) + ' 처리' : '') + '</p></div>' +
+      (RO ? '' : '<div class="un"><button class="btn" onclick="setOutcome(\'' + c.id + '\',\'\')">결과 취소</button></div>') + '</div>';
+  }
 
   out += '<div class="hero" id="s-profile"><div class="hero-in">' +
     '<div class="hero-ph">' + avatar(c) + '</div>' +
@@ -268,7 +386,7 @@ function viewCand(c) {
       '<div class="chips">' + chip('학력', c.edu.map(esc).join('<br>')) + chip('총 경력', esc(c.total)) + chip('현재 상태', esc(c.status)) + chip('연봉', esc(c.salary)) + chip('제출 자료', esc(c.files)) + '</div>' +
     '</div></div>' +
     '<div class="hero-meta"><label>면접</label>' +
-      (RO ? '<span>' + esc(st.memo.date || '–') + ' ' + esc(st.memo.time || '') + ' · 면접관 ' + esc(st.memo.iv || '–') + '</span>'
+      (RO ? '<span>' + esc(fmtDate(st.memo.date, true) || st.memo.date || '일시 미정') + ' ' + esc(st.memo.time || '') + ' · 면접관 ' + esc(st.memo.iv || '–') + '</span>'
           : '<input type="date" data-mk="date" value="' + esc(st.memo.date || '') + '" oninput="setMemo(\'' + c.id + '\',\'date\',this.value)">' +
             '<input type="time" data-mk="time" value="' + esc(st.memo.time || '') + '" oninput="setMemo(\'' + c.id + '\',\'time\',this.value)">' +
             '<input type="text" data-mk="iv" placeholder="면접관" style="width:130px" value="' + esc(st.memo.iv || '') + '" oninput="setMemo(\'' + c.id + '\',\'iv\',this.value)">' +
@@ -334,7 +452,14 @@ function viewCand(c) {
     (RO && !st.verdict ? '<span class="mut">미판정</span>' : '') + '</div>' +
     '<p class="lbl2" style="margin-top:17px">2차(임원) 면접 추천</p><div class="verd">' +
     ['Y', 'H', 'N'].map(function (k) { return '<button type="button" class="' + (k === 'Y' ? 'H' : k === 'H' ? 'LN' : 'NH') + (st.rec === k ? ' on' : '') + '" onclick="setRec(\'' + c.id + '\',\'' + k + '\')">' + recLabel(k) + '</button>'; }).join('') +
-    (RO && !st.rec ? '<span class="mut">–</span>' : '') + '</div></div></div>' +
+    (RO && !st.rec ? '<span class="mut">–</span>' : '') + '</div>' +
+    '<p class="lbl2" style="margin-top:17px">전형 결과 <span style="font-weight:600;color:var(--mut2)">— 대시보드에 크게 표시됩니다</span></p><div class="verd">' +
+    OUT.map(function (o) {
+      if (RO && st.outcome !== o.key) return '';
+      return '<button type="button" class="' + o.vc + (st.outcome === o.key ? ' on' : '') + '" onclick="setOutcome(\'' + c.id + '\',\'' + o.key + '\')">' + esc(o.label) + '</button>';
+    }).join('') + (RO && !st.outcome ? '<span class="mut">전형 진행 중</span>' : '') + '</div>' +
+    (st.outcome ? '<p class="lbl2" style="margin-top:13px">결과 사유 · 메모</p>' + inp('outWhy', '예: 로직 케이스 미흡 / 처우 협의 결렬') : '') +
+    '</div></div>' +
     '<p class="lbl2" style="margin-top:20px">총평 (대표님 보고용 — 강점 / 우려 / 추천 이유 / 확신도)</p>' + ta('final', '', 180) + '</div></section>';
 
   return out + '</div>';
@@ -344,19 +469,23 @@ window.jump = function (id) { var el = document.getElementById(id); if (el) el.s
 /* ───────── 뷰: 비교표 */
 function viewCompare() {
   var rs = rows().sort(function (a, b) { return (b.absent ? -1 : b.w.t) - (a.absent ? -1 : a.w.t); });
-  var head = '<tr><th>후보</th><th>나이 · 경력</th>' + D.RUBRIC.map(function (r) { return '<th style="text-align:center">' + esc(SHORT[r.key] || r.name) + '<br><span class="sm mut">' + r.w + '</span></th>'; }).join('') +
-    '<th style="text-align:center">케이스</th><th style="text-align:center">⚠</th><th style="text-align:center">점수</th><th>판정</th><th>2차</th></tr>';
+  var head = '<tr><th>후보</th><th>면접일</th><th>나이 · 경력</th>' + D.RUBRIC.map(function (r) { return '<th style="text-align:center">' + esc(SHORT[r.key] || r.name) + '<br><span class="sm mut">' + r.w + '</span></th>'; }).join('') +
+    '<th style="text-align:center">케이스</th><th style="text-align:center">⚠</th><th style="text-align:center">점수</th><th>판정</th><th>2차</th><th>결과</th></tr>';
   var body = rs.map(function (r) {
-    if (r.absent) return '<tr class="absent-row"><td><a href="#/c/' + r.c.id + '"><b>' + esc(r.c.name) + '</b></a></td><td class="sm">' + esc(r.c.age) + '<br>' + esc(r.c.total) + '</td><td colspan="' + (D.RUBRIC.length + 5) + '" style="text-align:center;font-weight:800">⊘ 면접 미참여</td></tr>';
+    var omv = outMeta(r.outcome);
+    if (r.absent) return '<tr class="absent-row"><td><a href="#/c/' + r.c.id + '"><b>' + esc(r.c.name) + '</b></a></td><td class="sm">–</td><td class="sm">' + esc(r.c.age) + '<br>' + esc(r.c.total) + '</td><td colspan="' + (D.RUBRIC.length + 6) + '" style="text-align:center;font-weight:800">⊘ 면접 미참여</td></tr>';
     var fl = D.FLAGS.filter(function (f, i) { return r.st.flags[i]; }).length;
     var ck = D.CASE.checks.filter(function (f, i) { return r.st.checks[i]; }).length;
     var vv = r.st.verdict ? vlabel(r.st) : '';
-    return '<tr><td><a href="#/c/' + r.c.id + '"><b>' + esc(r.c.name) + '</b></a></td><td class="sm">' + esc(r.c.age) + '<br>' + esc(r.c.total) + '</td>' +
+    return '<tr' + (omv && omv.cls === 'r' ? ' class="absent-row"' : '') + '><td><a href="#/c/' + r.c.id + '"><b>' + esc(r.c.name) + '</b></a></td>' +
+      '<td class="sm">' + (esc(fmtDate(r.date)) || '<span class="mut">–</span>') + '</td>' +
+      '<td class="sm">' + esc(r.c.age) + '<br>' + esc(r.c.total) + '</td>' +
       D.RUBRIC.map(function (x) { return '<td class="num">' + (sc15(r.st.scores[x.key]) || '–') + '</td>'; }).join('') +
       '<td class="num">' + (r.w.n ? ck : '–') + '</td><td class="num">' + (fl ? '<span class="tag r">' + fl + '</span>' : '–') + '</td>' +
       '<td class="num" style="font-size:17px;color:var(--p)">' + (r.w.n ? r.w.t : '–') + '</td>' +
       '<td>' + (vv ? '<span class="tag ' + (r.st.verdict === 'SH' || r.st.verdict === 'H' ? 'g' : r.st.verdict === 'LN' ? 'y' : 'r') + '">' + esc(vv) + '</span>' : '–') + '</td>' +
-      '<td>' + recLabel(r.st.rec) + '</td></tr>';
+      '<td>' + recLabel(r.st.rec) + '</td>' +
+      '<td>' + (omv ? '<span class="tag ' + (omv.cls === 'g' ? 'g' : omv.cls === 'r' ? 'r' : 'n') + '">' + esc(omv.label) + '</span>' : '<span class="mut">진행 중</span>') + '</td></tr>';
   }).join('');
   var keyTbl = '<tr><th style="width:92px">후보</th>' + D.KEYQ.map(function (k) { return '<th style="color:' + (/^#[0-9A-Fa-f]{3,8}$/.test(String(k.color)) ? k.color : '#7A4099') + '">' + esc(KSHORT[k.key] || k.title) + '</th>'; }).join('') + '<th>총평</th></tr>' +
     rs.filter(function (r) { return !r.absent; }).map(function (r) {
@@ -461,6 +590,20 @@ window.askAbsent = function (id) {
   var st = cs(id); st.absent = true; if (why.trim()) st.memo.absentWhy = why.trim();
   touch(id); save(); rerender();
 };
+window.setOutcome = function (id, k) {
+  if (RO) return;
+  var st = cs(id), c = cand(id), om = outMeta(k);
+  if (!k || !om || st.outcome === k) {
+    if (st.outcome && !confirm((c ? c.name + ' 후보의 ' : '') + '전형 결과를 취소하고 「진행 중」으로 되돌릴까요?')) return;
+    st.outcome = ''; delete st.memo.outWhy; delete st.memo.outAt;
+  } else {
+    if (!confirm((c ? c.name + ' 후보를 ' : '') + '「' + om.label + '」(으)로 처리할까요?\n대시보드에 크게 표시됩니다.')) return;
+    st.outcome = k;
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    st.memo.outAt = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  touch(id); save(); rerender();
+};
 window.toggleMode = function () { RO = !RO; rerender(); };
 
 /* ───────── 내보내기 */
@@ -483,21 +626,30 @@ function cleanState() {
 function buildSummary() {
   var today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
   var rs = rows(), scored = rs.filter(function (r) { return r.scored; }).sort(function (a, b) { return b.w.t - a.w.t; });
-  var absent = rs.filter(function (r) { return r.absent; }), pending = rs.filter(function (r) { return !r.absent && !r.w.n; });
+  var absent = rs.filter(function (r) { return r.absent; }), pending = rs.filter(function (r) { return inFilter(r, 'todo'); });
+  var passed = rs.filter(function (r) { return r.outcome === 'final_pass'; });
+  var dropped = rs.filter(function (r) { return !r.absent && r.outcome && r.outcome !== 'final_pass'; });
+  var oLab = function (r) { var m = outMeta(r.outcome); return m ? m.label : ''; };
   var L = [];
   L.push('📋 판옵티콘 프로덕트 기획자 1차 면접 요약');
   L.push(today + ' · 면접관 정승재 · 채점 ' + scored.length + '/' + rs.length + '명' + (absent.length ? ' · 미참여 ' + absent.length : ''));
   L.push('');
   L.push('■ 종합 순위');
-  scored.forEach(function (r, i) { L.push((i + 1) + '. ' + r.c.name + ' — ' + r.w.t + '점 · ' + (r.st.verdict ? vlabel(r.st) : verdictFor(r.w.t).label + '(자동)') + ' · 2차 ' + recLabel(r.st.rec)); });
+  scored.forEach(function (r, i) {
+    L.push((i + 1) + '. ' + r.c.name + ' — ' + r.w.t + '점 · ' + (r.st.verdict ? vlabel(r.st) : verdictFor(r.w.t).label + '(자동)') +
+      ' · 2차 ' + recLabel(r.st.rec) + (r.date ? ' · ' + fmtDate(r.date, true) + ' 면접' : '') + (oLab(r) ? ' · 【' + oLab(r) + '】' : ''));
+  });
+  if (passed.length) L.push('★ 최종 합격: ' + passed.map(function (r) { return r.c.name; }).join(', '));
+  if (dropped.length) L.push('✕ 탈락 · 사퇴: ' + dropped.map(function (r) { return r.c.name + '(' + oLab(r) + ')'; }).join(', '));
   if (absent.length) L.push('⊘ 미참여: ' + absent.map(function (r) { return r.c.name; }).join(', '));
-  if (pending.length) L.push('· 면접 예정: ' + pending.map(function (r) { return r.c.name; }).join(', '));
+  if (pending.length) L.push('· 면접 예정: ' + pending.map(function (r) { return r.c.name + (r.date ? ' ' + fmtDate(r.date) : ''); }).join(', '));
   L.push('');
   L.push('판정 기준: 85+ Strong Hire · 70~84 Hire · 55~69 Lean No · 55↓ No Hire');
   scored.forEach(function (r) {
     var c = r.c, st = r.st, w = r.w, ck = D.CASE.checks.filter(function (x, i) { return st.checks[i]; }).length;
     L.push(''); L.push('━━━━━━━━━━━━━━━━');
-    L.push('▶ ' + c.name + ' (' + c.gender + ' · ' + c.age + ' · 경력 ' + c.total + ')');
+    L.push('▶ ' + c.name + ' (' + c.gender + ' · ' + c.age + ' · 경력 ' + c.total + ')' + (oLab(r) ? '  【' + oLab(r) + '】' : ''));
+    if (r.date) L.push('면접일: ' + fmtDate(r.date, true) + (st.memo.time ? ' ' + st.memo.time : '') + (st.memo.iv ? ' · 면접관 ' + st.memo.iv : ''));
     L.push('학력: ' + c.edu.join(' / '));
     L.push('현재: ' + c.status + (c.addr && c.addr !== '미기재' ? ' · ' + c.addr : ''));
     L.push('점수: ' + w.t + '/100 → ' + (st.verdict ? vlabel(st) : verdictFor(w.t).label + '(자동)') + ' · 2차 ' + recLabel(st.rec));
@@ -619,10 +771,26 @@ function boot(base) {
     try { console.warn('merge dropped:', S._dropped); } catch (e) {}
   } else if (S._base) setChip('공용 기록 ' + new Date(S._base).toLocaleDateString('ko-KR') + ' 반영됨');
   try { if (!FH && localStorage.getItem(KEY + '_fh')) setChip('⚠ 파일 자동저장 연결 끊김 — ⋯ 메뉴에서 다시 연결', true); } catch (e) {}
+  if (SB) {
+    setChip('✓ 실시간 공유 저장 켜짐');
+    sbPush();                                                   // 내 로컬 기록을 공용본에 올림
+    setInterval(sbPoll, Math.max(5000, +SB.pollMs || 20000));    // 다른 사람 변경사항 가져오기
+    window.addEventListener('focus', sbPoll);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) sbPoll(); });
+  }
 }
 fetch('results.json', { cache: 'no-store' })
   .then(function (r) { return r.ok ? r.json() : {}; })
-  .then(function (j) { boot(j || {}); })
-  .catch(function () { boot({}); });
+  .catch(function () { return {}; })
+  .then(function (j) {
+    j = j || {};
+    if (!SB) return boot(j);
+    return sbLoad()
+      .then(function (remote) { boot(mergeState(j, remote || {})); })   // 클라우드가 커밋본보다 우선
+      .catch(function (e) {
+        boot(j);
+        setChip('⚠ 공유 저장소 연결 실패 (' + (e && e.message) + ') — 내 브라우저 기록만 표시', true);
+      });
+  });
 
 })();
