@@ -625,32 +625,49 @@ window.setVerdict = function (id, k) { if (RO) return; var st = cs(id); st.verdi
 window.setRec = function (id, k) { if (RO) return; var st = cs(id); st.rec = st.rec === k ? '' : k; touch(id); save(); rerender(); };
 window.setAbsent = function (id, v) {
   if (RO) return;
-  var c = cand(id);
-  if (!v && !confirm((c ? c.name + ' 후보의 ' : '') + '면접 미참여를 취소하고 「전형 진행 중」으로 되돌릴까요?')) return;
-  var st = cs(id);
+  var c = cand(id), st = cs(id), why = st.memo.absentWhy || '';
   if (v) st.absent = true; else { delete st.absent; delete st.memo.absentWhy; }
   touch(id); save(); rerender();
+  toast('<b>' + esc(c ? c.name : id) + '</b> → ' + (v ? '면접 미참여' : '전형 진행 중'), function () {
+    var s2 = cs(id);
+    if (v) { delete s2.absent; delete s2.memo.absentWhy; }
+    else { s2.absent = true; if (why) s2.memo.absentWhy = why; }
+    touch(id); save(); rerender();
+  });
 };
-window.askAbsent = function (id) {
-  var c = cand(id); if (!c) return;
-  if (!confirm(c.name + ' 후보를 면접 미참여로 처리할까요?')) return;
-  var why = prompt('사유 (선택 — 비워도 됩니다)', '') || '';
-  var st = cs(id); st.absent = true; if (why.trim()) st.memo.absentWhy = why.trim();
-  touch(id); save(); rerender();
-};
+window.askAbsent = function (id) { setAbsent(id, true); };
+/* 되돌리기 토스트 — 확인창을 쓰지 않습니다(브라우저가 대화상자를 차단해도 동작) */
+var TT = null;
+function toast(msg, undo) {
+  var t = $('#toast');
+  if (!t) {
+    t = document.createElement('div'); t.id = 'toast'; t.className = 'toast';
+    t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite');
+    document.body.appendChild(t);
+  }
+  t.innerHTML = '<span>' + msg + '</span>' + (undo ? '<button type="button" id="toastUndo">되돌리기</button>' : '');
+  t.classList.add('on');
+  if (undo) $('#toastUndo').onclick = function () { t.classList.remove('on'); undo(); };
+  clearTimeout(TT); TT = setTimeout(function () { t.classList.remove('on'); }, 6000);
+}
 window.setOutcome = function (id, k) {
   if (RO) return;
   var st = cs(id), c = cand(id), om = outMeta(k);
+  var prev = st.outcome || '', prevAt = st.memo.outAt || '';
   if (!k || !om || st.outcome === k) {
-    if (st.outcome && !confirm((c ? c.name + ' 후보의 ' : '') + '전형 결과를 취소하고 「진행 중」으로 되돌릴까요?')) return;
-    st.outcome = ''; delete st.memo.outWhy; delete st.memo.outAt;
+    st.outcome = ''; delete st.memo.outAt;
   } else {
-    if (!confirm((c ? c.name + ' 후보를 ' : '') + '「' + om.label + '」(으)로 처리할까요?\n대시보드에 크게 표시됩니다.')) return;
     st.outcome = k;
     var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
     st.memo.outAt = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
   }
   touch(id); save(); rerender();
+  var now = outMeta(st.outcome);
+  toast('<b>' + esc(c ? c.name : id) + '</b> → ' + (now ? esc(now.label) : '전형 진행 중'), function () {
+    var s2 = cs(id); s2.outcome = prev;
+    if (prevAt) s2.memo.outAt = prevAt; else delete s2.memo.outAt;
+    touch(id); save(); rerender();
+  });
 };
 window.toggleMode = function () { RO = !RO; rerender(); };
 

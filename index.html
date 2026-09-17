@@ -126,6 +126,19 @@ main{max-width:1240px;margin:0 auto;padding:26px 22px 110px}
 .cardout button.n.on:hover{background:var(--bad);border-color:var(--bad)}
 .cardout .cl + button.n.on{flex:1;text-align:center}
 body.review .cardout{display:none}
+
+/* ───────── 되돌리기 토스트 */
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,140%);z-index:90;
+  display:flex;align-items:center;gap:14px;max-width:calc(100vw - 28px);
+  background:#241C2E;color:#fff;border-radius:14px;padding:12px 14px 12px 18px;
+  box-shadow:0 10px 34px -8px rgba(20,10,30,.55);font-size:14.5px;
+  opacity:0;pointer-events:none;transition:transform .22s cubic-bezier(.2,.8,.3,1),opacity .22s}
+.toast.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+.toast b{font-weight:800}
+.toast button{border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;
+  border-radius:9px;padding:6px 13px;cursor:pointer;font-size:13.5px;font-weight:700;white-space:nowrap}
+.toast button:hover{background:rgba(255,255,255,.16)}
+@media print{.toast{display:none!important}}
 .ph .rk{position:absolute;left:12px;top:12px;background:rgba(20,12,28,.72);color:#fff;font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;backdrop-filter:blur(6px)}
 .ph .sc{position:absolute;right:12px;top:12px;background:#fff;border-radius:12px;padding:5px 10px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.14);line-height:1.1}
 .ph .sc b{font-size:19px;font-weight:800;color:var(--p);display:block}
@@ -413,8 +426,8 @@ body.review .editonly{display:none}
 <input type="file" id="fileIn" accept="application/json" style="display:none">
 
 <!-- ?v= 는 배포할 때마다 올려 주세요. 브라우저 캐시 때문에 옛 파일이 내려가는 걸 막습니다. -->
-<script src="config.js?v=9"></script>
-<script src="data.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="config.js?v=10"></script>
+<script src="data.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
