@@ -242,9 +242,9 @@ function rows() {
 function inFilter(r, k) {
   switch (k) {
     case 'all': return true;
-    case 'todo': return !r.absent && !r.outcome && !r.w.n;                        // 아직 안 본 사람
-    case 'done': return !r.absent && !r.outcome && r.w.n > 0;                     // 1차 면접 완료
-    case 'next': return !r.absent && !r.outcome && r.st.rec === 'Y';              // 대표님이 면접 볼 사람
+    case 'todo': return !r.absent && !r.outcome && !isNext(r) && !r.w.n;           // 아직 안 본 사람
+    case 'done': return !r.absent && !r.outcome && !isNext(r) && r.w.n > 0;        // 1차 완료, 아직 판정 전
+    case 'next': return !r.absent && !r.outcome && isNext(r);                      // 대표님이 면접 볼 사람
     case 'pass': return r.outcome === 'final_pass';
     case 'out': return r.absent || (!!r.outcome && r.outcome !== 'final_pass');   // 탈락·사퇴·미참여
   }
@@ -295,15 +295,23 @@ function viewHome() {
 
 /* ───────── 홈 구역 나누기 */
 var SECTIONS = [
-  { key: 'next', cls: 'hot', t: '★ 대표님 2차 면접 대상', d: '1차 면접에서 추천된 후보 — 대표님 면접만 남았습니다' },
+  { key: 'next', cls: 'hot', t: '★ 대표님 2차 면접 대상', d: '2차 추천 「추천」 또는 판정 Hire 이상 — 대표님 면접만 남았습니다' },
   { key: 'pass', cls: 'ok', t: '최종 합격', d: '' },
   { key: 'live', cls: '', t: '전형 진행 중', d: '면접 예정 · 1차 면접 완료' },
   { key: 'out', cls: 'off', t: '탈락 · 종료', d: '1차 탈락 · 최종 탈락 · 사퇴 · 면접 미참여 — 버튼을 다시 누르면 되살릴 수 있습니다' }
 ];
+/* 2차(대표님) 면접 대상 판정 — 점수를 안 매겨도 표시만 하면 올라갑니다.
+   · 2차 추천 「추천」 → 대상
+   · 최종 판정 Strong Hire / Hire → 대상 (2차 추천을 아직 안 눌렀어도)
+   · 2차 추천 「비추천」을 명시했으면 제외 */
+function isNext(r) {
+  if (r.st.rec === 'N') return false;
+  return r.st.rec === 'Y' || r.st.verdict === 'SH' || r.st.verdict === 'H';
+}
 function sectionOf(r) {
   if (r.absent || (r.outcome && r.outcome !== 'final_pass')) return 'out';
   if (r.outcome === 'final_pass') return 'pass';
-  if (r.st.rec === 'Y') return 'next';
+  if (isNext(r)) return 'next';
   return 'live';
 }
 function gridHTML(list) {
