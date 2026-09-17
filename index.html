@@ -90,15 +90,15 @@ main{max-width:1240px;margin:0 auto;padding:26px 22px 110px}
 .gsec.ok .gsec-h{border-bottom-color:#9ED9C6}
 .gsec.ok .gsec-h h2{color:var(--ok)}
 .gsec.ok .gsec-h .n{background:var(--ok)}
-.gsec.dim .gsec-h h2{color:var(--mut)}
+.gsec.off .gsec-h h2{color:var(--mut)}
 
 /* ───────── 카드 그리드 */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(278px,1fr));gap:16px}
 .pcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;
   transition:transform .16s cubic-bezier(.2,.8,.3,1),box-shadow .16s,border-color .16s;display:flex;flex-direction:column;position:relative}
 .pcard:hover{transform:translateY(-3px);box-shadow:var(--sh);border-color:var(--p3)}
-.pcard.absent{opacity:.62}
-.pcard.absent:hover{transform:none}
+.pcard.absent{opacity:.78}
+.pcard.absent:hover{transform:none;opacity:1}
 .ph{position:relative;aspect-ratio:3/2;background:linear-gradient(160deg,#EDE6F3,#DED2E9);overflow:hidden;flex:none}
 .ph img{width:100%;height:100%;object-fit:cover;object-position:center 22%}
 .ph{--inifs:40px}
@@ -123,6 +123,8 @@ main{max-width:1240px;margin:0 auto;padding:26px 22px 110px}
 .cardout button.g.on{background:var(--ok);border-color:var(--ok)}
 .cardout button.r.on{background:var(--bad);border-color:var(--bad)}
 .cardout button.n.on{background:#5A5266;border-color:#5A5266}
+.cardout button.n.on:hover{background:var(--bad);border-color:var(--bad)}
+.cardout .cl + button.n.on{flex:1;text-align:center}
 body.review .cardout{display:none}
 .ph .rk{position:absolute;left:12px;top:12px;background:rgba(20,12,28,.72);color:#fff;font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;backdrop-filter:blur(6px)}
 .ph .sc{position:absolute;right:12px;top:12px;background:#fff;border-radius:12px;padding:5px 10px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.14);line-height:1.1}
@@ -411,8 +413,8 @@ body.review .editonly{display:none}
 <input type="file" id="fileIn" accept="application/json" style="display:none">
 
 <!-- ?v= 는 배포할 때마다 올려 주세요. 브라우저 캐시 때문에 옛 파일이 내려가는 걸 막습니다. -->
-<script src="config.js?v=8"></script>
-<script src="data.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="config.js?v=9"></script>
+<script src="data.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

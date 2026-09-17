@@ -298,7 +298,7 @@ var SECTIONS = [
   { key: 'next', cls: 'hot', t: '★ 대표님 2차 면접 대상', d: '1차 면접에서 추천된 후보 — 대표님 면접만 남았습니다' },
   { key: 'pass', cls: 'ok', t: '최종 합격', d: '' },
   { key: 'live', cls: '', t: '전형 진행 중', d: '면접 예정 · 1차 면접 완료' },
-  { key: 'out', cls: 'dim', t: '탈락 · 종료', d: '1차 탈락 · 최종 탈락 · 사퇴 · 면접 미참여' }
+  { key: 'out', cls: 'off', t: '탈락 · 종료', d: '1차 탈락 · 최종 탈락 · 사퇴 · 면접 미참여 — 버튼을 다시 누르면 되살릴 수 있습니다' }
 ];
 function sectionOf(r) {
   if (r.absent || (r.outcome && r.outcome !== 'final_pass')) return 'out';
@@ -357,12 +357,15 @@ function cardHTML(r, i) {
       '<div class="meta-row">' + (tags.join('') || '<span class="tag n">미채점</span>') + '</div>' +
       '<p class="psum">' + esc(c.summary) + '</p>' +
       '<div class="pfoot"><span class="info">경력 ' + esc(String(c.total).split('(')[0].trim()) + '</span><div class="bars" aria-hidden="true">' + bars + '</div></div>' +
-      (RO || r.absent ? '' :
-        '<div class="cardout" onclick="event.stopPropagation()"><span class="cl">결과</span>' +
-        OUT.map(function (o) {
-          return '<button type="button" class="' + o.cls + (r.outcome === o.key ? ' on' : '') + '" title="' + esc(o.label) + '"' +
-            ' onclick="event.stopPropagation();setOutcome(\'' + c.id + '\',\'' + o.key + '\')">' + esc(o.short) + '</button>';
-        }).join('') + '</div>') +
+      (RO ? '' : r.absent
+        ? '<div class="cardout" onclick="event.stopPropagation()"><span class="cl">상태</span>' +
+          '<button type="button" class="n on" onclick="event.stopPropagation();setAbsent(\'' + c.id + '\',false)">⊘ 면접 미참여 — 눌러서 되살리기</button></div>'
+        : '<div class="cardout" onclick="event.stopPropagation()"><span class="cl">결과</span>' +
+          OUT.map(function (o) {
+            return '<button type="button" class="' + o.cls + (r.outcome === o.key ? ' on' : '') + '"' +
+              ' title="' + esc(o.label) + (r.outcome === o.key ? ' — 다시 누르면 취소' : '') + '"' +
+              ' onclick="event.stopPropagation();setOutcome(\'' + c.id + '\',\'' + o.key + '\')">' + esc(o.short) + '</button>';
+          }).join('') + '</div>') +
     '</div></article>';
 }
 window.cardKey = function (e, id) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('#/c/' + id); } };
@@ -620,7 +623,14 @@ window.setCheck = function (id, i, v) { if (RO) return; cs(id).checks[i] = v; to
 window.setFlag = function (id, i, v) { if (RO) return; cs(id).flags[i] = v; touch(id); save(); rerender(); };
 window.setVerdict = function (id, k) { if (RO) return; var st = cs(id); st.verdict = st.verdict === k ? '' : k; touch(id); save(); rerender(); };
 window.setRec = function (id, k) { if (RO) return; var st = cs(id); st.rec = st.rec === k ? '' : k; touch(id); save(); rerender(); };
-window.setAbsent = function (id, v) { if (RO) return; var st = cs(id); if (v) st.absent = true; else { delete st.absent; delete st.memo.absentWhy; } touch(id); save(); rerender(); };
+window.setAbsent = function (id, v) {
+  if (RO) return;
+  var c = cand(id);
+  if (!v && !confirm((c ? c.name + ' 후보의 ' : '') + '면접 미참여를 취소하고 「전형 진행 중」으로 되돌릴까요?')) return;
+  var st = cs(id);
+  if (v) st.absent = true; else { delete st.absent; delete st.memo.absentWhy; }
+  touch(id); save(); rerender();
+};
 window.askAbsent = function (id) {
   var c = cand(id); if (!c) return;
   if (!confirm(c.name + ' 후보를 면접 미참여로 처리할까요?')) return;
