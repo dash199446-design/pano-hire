@@ -327,6 +327,79 @@ body.review .verd button:not(.on){display:none}
 body.review .chk{pointer-events:none}
 body.review .editonly{display:none}
 
+/* ───────── 이력서 원문 (resume) */
+.rs-note{display:flex;gap:9px;align-items:flex-start;background:var(--p2);color:var(--pd);border-radius:12px;padding:11px 14px;font-size:13.5px;line-height:1.55;margin-bottom:6px}
+.rs-sec{padding:20px 0 4px}
+.rs-sec + .rs-sec{border-top:1px solid var(--line);margin-top:14px}
+.rs-sh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rs-sh h3{margin:0;font-size:19px;font-weight:800;letter-spacing:-.02em}
+.rs-sh span{font-size:13px;color:var(--blue);font-weight:600}
+.rs-it{border:1px solid var(--line);border-radius:14px;padding:18px 21px;margin-top:11px;background:#fff}
+.rs-top{display:flex;justify-content:space-between;gap:16px;margin-bottom:6px}
+.rs-t{font-size:16.5px;font-weight:800;letter-spacing:-.02em;line-height:1.4}
+.rs-s{font-size:13.8px;color:var(--mut);margin-top:2px;line-height:1.5}
+.rs-r{text-align:right;font-size:13.8px;color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none}
+.rs-r em{display:block;font-style:normal;color:var(--blue);font-size:12.8px;font-weight:600}
+.rs-h{margin:13px 0 2px;font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.55}
+.rs-meta{font-size:13px;color:var(--mut);margin:2px 0 4px}
+.rs-p{margin:3px 0;font-size:14.6px;line-height:1.72;color:var(--ink2)}
+.rs-lead{margin:7px 0 11px;font-size:14.6px;line-height:1.72;color:var(--mut)}
+.rs-li,.rs-kv .bul{position:relative;padding-left:15px}
+.rs-li{margin:4px 0;font-size:14.6px;line-height:1.66;color:var(--ink2)}
+.rs-li:before,.rs-kv .bul:before{content:"•";position:absolute;left:2px;color:var(--mut2)}
+.rs-kv{display:grid;grid-template-columns:6.4em 1fr;gap:10px;margin:4px 0;font-size:14.4px;line-height:1.66}
+.rs-kv b{font-weight:800;color:var(--ink)}
+.rs-kv span{color:var(--ink2)}
+.rs-hr{border:0;border-top:1px dashed var(--p3);margin:18px 0 6px}
+.rs-gap{height:9px}
+.rs-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rs-tags span{background:#F1EEF5;color:var(--ink2);font-size:13px;font-weight:600;padding:5px 10px;border-radius:8px}
+.rs-foot{margin:18px 0 0;font-size:12.5px;color:var(--mut2);text-align:center;line-height:1.6}
+.pfbtn{display:inline-flex;align-items:center;gap:8px;background:var(--p);color:#fff;border-radius:12px;padding:11px 17px;font-weight:700;font-size:14.5px;margin-top:10px;transition:.12s}
+.pfbtn:hover{background:var(--pd)}
+.pfbtn small{opacity:.78;font-weight:600;font-size:12.5px}
+.pfbtn.w{background:#fff;color:var(--pd);margin:0 0 17px}
+.pfbtn.w:hover{background:var(--p2)}
+.pfchip{font-size:11.5px;font-weight:700;color:var(--p);background:var(--p2);border-radius:7px;padding:3px 8px;white-space:nowrap}
+.pfchip:hover{background:var(--p3)}
+
+/* ───────── 포트폴리오 뷰어 (#/pf/<id>) */
+.pfv-bar{position:sticky;top:56px;z-index:30;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);margin:-26px -22px 18px;padding:0 22px}
+.pfv-bar .in{max-width:1240px;margin:0 auto;display:flex;gap:9px;align-items:center;padding:9px 0;flex-wrap:wrap}
+.pfv-ttl{flex:1;min-width:150px;line-height:1.35}
+.pfv-ttl b{display:block;font-size:15.5px;letter-spacing:-.02em}
+.pfv-ttl span{font-size:12.5px;color:var(--mut)}
+.pfv-pg{font-weight:800;color:var(--p);background:var(--p2);border-radius:999px;padding:6px 13px;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pfv-pages{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.pfv-p{margin:0;background:#fff;border-radius:12px;overflow:hidden;box-shadow:var(--sh);scroll-margin-top:124px;position:relative}
+.pfv-p a{display:block}
+.pfv-p img{width:100%;height:auto;aspect-ratio:16/9;background:#EEE9F3}
+.pfv-p figcaption{position:absolute;right:10px;bottom:10px;background:rgba(20,15,25,.62);color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;pointer-events:none;font-variant-numeric:tabular-nums}
+.pfv-grid{max-width:1240px;margin:0 auto 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.pfv-grid[hidden]{display:none}
+.pfv-grid button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:0;overflow:hidden;cursor:pointer;position:relative;transition:.12s}
+.pfv-grid button:hover{border-color:var(--p);box-shadow:0 0 0 2px var(--p3)}
+.pfv-grid img{width:100%;aspect-ratio:16/9;background:#EEE9F3}
+.pfv-grid span{position:absolute;left:6px;top:6px;background:rgba(20,15,25,.62);color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px}
+.pfv-end{text-align:center;color:var(--mut);font-size:13.5px;margin:22px 0 0}
+@media (max-width:720px){
+  .rs-it{padding:14px 14px}
+  .rs-top{flex-direction:column;gap:3px}
+  .rs-r{text-align:left;white-space:normal}
+  .rs-r em{display:inline;margin-left:6px}
+  .rs-kv{grid-template-columns:1fr;gap:0;margin:7px 0}
+  .rs-kv.cont{margin-top:3px}
+  .rs-kv.cont b{display:none}
+  .rs-sh h3{font-size:17.5px}
+  .pfv-bar{position:static;margin:-16px -13px 12px;padding:0 13px}
+  .pfv-ttl{flex:1 0 100%}
+  .pfv-ttl .kb{display:none}
+  .savechip{max-width:44vw;overflow:hidden;text-overflow:ellipsis}
+  .pfv-pages{gap:10px}
+  .pfv-p{border-radius:8px;scroll-margin-top:12px}
+  .pfv-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+}
+
 @media (max-width:1000px){
   .grid2,.final{grid-template-columns:1fr}
   .stats{grid-template-columns:repeat(3,1fr)}
@@ -426,8 +499,8 @@ body.review .editonly{display:none}
 <input type="file" id="fileIn" accept="application/json" style="display:none">
 
 <!-- ?v= 는 배포할 때마다 올려 주세요. 브라우저 캐시 때문에 옛 파일이 내려가는 걸 막습니다. -->
-<script src="config.js?v=11"></script>
-<script src="data.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="config.js?v=12"></script>
+<script src="data.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

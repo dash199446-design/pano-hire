@@ -222,6 +222,8 @@ function route() {
   try { h = decodeURIComponent(h); } catch (e) {}
   var m = h.match(/^\/c\/([\w-]+)/);
   if (m) return { v: 'cand', id: m[1] };
+  var mp = h.match(/^\/pf\/([\w-]+)(?:\/(\d+))?/);
+  if (mp) return { v: 'pf', id: mp[1], page: mp[2] ? +mp[2] : 0 };
   if (h.indexOf('/compare') === 0) return { v: 'compare' };
   if (h.indexOf('/guide') === 0) return { v: 'guide' };
   return { v: 'home' };
@@ -364,7 +366,9 @@ function cardHTML(r, i) {
       telHTML(c.phone) +
       '<div class="meta-row">' + (tags.join('') || '<span class="tag n">미채점</span>') + '</div>' +
       '<p class="psum">' + esc(c.summary) + '</p>' +
-      '<div class="pfoot"><span class="info">경력 ' + esc(String(c.total).split('(')[0].trim()) + '</span><div class="bars" aria-hidden="true">' + bars + '</div></div>' +
+      '<div class="pfoot"><span class="info">경력 ' + esc(String(c.total).split('(')[0].trim()) +
+        (c.pf ? ' &nbsp;<a class="pfchip" href="#/pf/' + c.id + '" onclick="event.stopPropagation()" title="포트폴리오 보러가기">포트폴리오 ' + c.pf.pages + 'p</a>' : '') +
+      '</span><div class="bars" aria-hidden="true">' + bars + '</div></div>' +
       (RO ? '' : r.absent
         ? '<div class="cardout" onclick="event.stopPropagation()"><span class="cl">상태</span>' +
           '<button type="button" class="n on" onclick="event.stopPropagation();setAbsent(\'' + c.id + '\',false)">⊘ 면접 미참여 — 눌러서 되살리기</button></div>'
@@ -388,6 +392,107 @@ window.setQ = function (v) {
 };
 
 /* ───────── 뷰: 상세 */
+/* ───────── 이력서 원문 렌더 (c.resume)
+   줄 표기: ''=간격 · '---'=구분선 · '## '=소제목 · '~ '=보조 정보 · '> '=설명문 · '• '=글머리 · '@라벨|내용'=라벨 행 · 그 외=본문 그대로 */
+function rsLine(l) {
+  l = String(l == null ? '' : l);
+  if (l === '') return '<div class="rs-gap"></div>';
+  if (l === '---') return '<hr class="rs-hr">';
+  if (l.indexOf('## ') === 0) return '<h4 class="rs-h">' + esc(l.slice(3)) + '</h4>';
+  if (l.indexOf('~ ') === 0) return '<div class="rs-meta">' + esc(l.slice(2)) + '</div>';
+  if (l.indexOf('> ') === 0) return '<p class="rs-lead">' + esc(l.slice(2)) + '</p>';
+  if (l.charAt(0) === '@' && l.indexOf('|') > 0) {
+    var i = l.indexOf('|'), k = l.slice(1, i), v = l.slice(i + 1), b = v.indexOf('• ') === 0;
+    return '<div class="rs-kv' + (k ? '' : ' cont') + '"><b>' + esc(k) + '</b><span' + (b ? ' class="bul"' : '') + '>' + esc(b ? v.slice(2) : v) + '</span></div>';
+  }
+  if (l.indexOf('• ') === 0) return '<div class="rs-li">' + esc(l.slice(2)) + '</div>';
+  return '<p class="rs-p">' + esc(l) + '</p>';
+}
+function resumeHTML(c) {
+  var html = '<div class="rs-note"><span>아래는 <b>' + esc(c.name) + '</b> 지원자가 제출한 이력서 PDF 내용을 요약·해석 없이 섹션 순서 그대로 옮긴 것입니다.' +
+    (c.pf ? ' 포트폴리오는 <a href="#/pf/' + c.id + '"><b>포트폴리오 보러가기</b></a>에서 전 페이지를 볼 수 있습니다.' : '') + '</span></div>';
+  html += (c.resume || []).map(function (s) {
+    return '<div class="rs-sec"><div class="rs-sh"><h3>' + esc(s.h) + '</h3>' + (s.note ? '<span>' + esc(s.note) + '</span>' : '') + '</div>' +
+      (s.items || []).map(function (it) {
+        var top = (it.t || it.r)
+          ? '<div class="rs-top"><div>' + (it.t ? '<div class="rs-t">' + esc(it.t) + '</div>' : '') + (it.s ? '<div class="rs-s">' + esc(it.s) + '</div>' : '') + '</div>' +
+            (it.r || it.r2 ? '<div class="rs-r">' + esc(it.r || '') + (it.r2 ? '<em>' + esc(it.r2) + '</em>' : '') + '</div>' : '') + '</div>'
+          : (it.s ? '<div class="rs-s">' + esc(it.s) + '</div>' : '');
+        return '<div class="rs-it">' + top + (it.body || []).map(rsLine).join('') +
+          (it.tags ? '<div class="rs-tags">' + it.tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+          (it.pf && c.pf ? pfBtn(c) : '') + '</div>';
+      }).join('') + '</div>';
+  }).join('');
+  if (c.resumeFoot) html += '<p class="rs-foot">' + esc(c.resumeFoot) + '</p>';
+  return html;
+}
+var PFICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>';
+function pfBtn(c, cls) {
+  return '<a class="pfbtn' + (cls ? ' ' + cls : '') + '" href="#/pf/' + c.id + '" onclick="event.stopPropagation()">' + PFICON + ' 포트폴리오 보러가기 <small>' + c.pf.pages + '쪽</small></a>';
+}
+
+/* ───────── 포트폴리오 뷰어 (#/pf/<id>[/<쪽>]) — 페이지 이미지(webp)를 저장소에 내장, 링크만 있으면 어디서든 열람 */
+function pad2(n) { return String(n).padStart(2, '0'); }
+function viewPF(c) {
+  var P = c.pf, base = 'pf/' + encodeURIComponent(c.id) + '/', n = P.pages, ar = (P.w || 16) + ' / ' + (P.h || 9);
+  var thumbs = '', pages = '';
+  for (var i = 1; i <= n; i++) {
+    thumbs += '<button type="button" onclick="pfGo(' + i + ',1)" aria-label="' + i + '쪽으로 이동"><img src="' + base + 't' + pad2(i) + '.webp" loading="lazy" alt="" style="aspect-ratio:' + ar + '"><span>' + i + '</span></button>';
+    pages += '<figure class="pfv-p" id="pfp-' + i + '" data-n="' + i + '"><a href="' + base + 'p' + pad2(i) + '.webp" target="_blank" rel="noopener" title="원본 크기로 보기">' +
+      '<img src="' + base + 'p' + pad2(i) + '.webp" ' + (i <= 2 ? '' : 'loading="lazy" ') + 'decoding="async" width="' + (P.w || 1600) + '" height="' + (P.h || 900) + '" style="aspect-ratio:' + ar + '" alt="' + esc(c.name) + ' 포트폴리오 ' + i + '쪽"></a>' +
+      '<figcaption>' + i + ' / ' + n + '</figcaption></figure>';
+  }
+  return '<div class="pfv-bar noprint"><div class="in">' +
+      '<a class="btn" href="#/c/' + c.id + '">← ' + esc(c.name) + ' 상세</a>' +
+      '<div class="pfv-ttl"><b>' + esc(c.name) + ' · 포트폴리오</b><span>' + esc(P.title || '') + ' · 전 ' + n + '쪽<i class="kb" style="font-style:normal"> · ← → 키로 쪽 이동</i></span></div>' +
+      '<span class="pfv-pg" id="pfPg">1 / ' + n + '</span>' +
+      '<button class="btn" type="button" id="pfGridBtn" onclick="pfGrid()">전체 쪽 보기</button>' +
+      '<a class="btn" href="' + base + 'portfolio.pdf" target="_blank" rel="noopener">원본 PDF</a>' +
+    '</div></div>' +
+    '<div class="pfv-grid" id="pfGrid" hidden>' + thumbs + '</div>' +
+    '<div class="pfv-pages">' + pages + '</div>' +
+    '<p class="pfv-end">— 마지막 쪽입니다 · <a href="#/c/' + c.id + '">' + esc(c.name) + ' 상세로 돌아가기</a> —</p>';
+}
+var PFIO = null, PFCUR = 1, PFN = 0, PFID = '';
+function pfInit(c, page) {
+  PFN = c.pf.pages; PFID = c.id; PFCUR = 1;
+  if (PFIO) { try { PFIO.disconnect(); } catch (e) {} PFIO = null; }
+  if ('IntersectionObserver' in window) {
+    PFIO = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting) {
+          var k = +e.target.getAttribute('data-n');
+          if (k && k !== PFCUR) {
+            PFCUR = k;
+            var el = $('#pfPg'); if (el) el.textContent = k + ' / ' + PFN;
+            try { history.replaceState(null, '', '#/pf/' + PFID + (k > 1 ? '/' + k : '')); } catch (x) {}
+          }
+        }
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    Array.prototype.forEach.call(document.querySelectorAll('.pfv-p'), function (f) { PFIO.observe(f); });
+  }
+  if (page > 1) setTimeout(function () { pfGo(page); }, 30);
+  else window.scrollTo(0, 0);
+}
+window.pfGo = function (k, fromGrid) {
+  k = Math.max(1, Math.min(PFN, k));
+  if (fromGrid) { var g = $('#pfGrid'); if (g) g.hidden = true; var b = $('#pfGridBtn'); if (b) b.textContent = '전체 쪽 보기'; }
+  var el = document.getElementById('pfp-' + k);
+  if (el) el.scrollIntoView({ behavior: fromGrid ? 'auto' : 'smooth', block: 'start' });
+};
+window.pfGrid = function () {
+  var g = $('#pfGrid'), b = $('#pfGridBtn'); if (!g) return;
+  g.hidden = !g.hidden; if (b) b.textContent = g.hidden ? '전체 쪽 보기' : '목록 닫기';
+  if (!g.hidden) window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+document.addEventListener('keydown', function (e) {
+  if (route().v !== 'pf' || e.altKey || e.ctrlKey || e.metaKey) return;
+  var t = e.target && e.target.tagName; if (t === 'INPUT' || t === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'j') { e.preventDefault(); pfGo(PFCUR + 1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'k') { e.preventDefault(); pfGo(PFCUR - 1); }
+});
+
 function viewCand(c) {
   var st = cs(c.id), w = weighted(c.id), v = verdictFor(w.t);
   var rub = {}; D.RUBRIC.forEach(function (r) { rub[r.key] = r; });
@@ -431,7 +536,8 @@ function viewCand(c) {
       '<div class="eyebrow">후보 ' + (D.CANDIDATES.indexOf(c) + 1) + ' / ' + D.CANDIDATES.length + ' · 프로덕트 기획자 1차 면접</div>' +
       '<h1>' + esc(c.name) + '<em>' + esc(c.gender) + ' · ' + esc(c.birth) + ' · ' + esc(c.age) + '</em></h1>' +
       '<div class="contact">' + esc(c.phone) + ' &nbsp;·&nbsp; ' + esc(c.email) + ' &nbsp;·&nbsp; ' + esc(c.addr) + '</div>' +
-      '<p class="lead">' + esc(c.summary) + '</p>' +
+      (c.resume ? '' : '<p class="lead">' + esc(c.summary) + '</p>') +
+      (c.pf ? pfBtn(c, 'w') : '') +
       '<div class="chips">' + chip('학력', c.edu.map(esc).join('<br>')) + chip('총 경력', esc(c.total)) + chip('현재 상태', esc(c.status)) + chip('연봉', esc(c.salary)) + chip('제출 자료', esc(c.files)) + '</div>' +
     '</div></div>' +
     '<div class="hero-meta"><label>면접</label>' +
@@ -443,12 +549,20 @@ function viewCand(c) {
     '</div></div>';
 
   out += '<div class="subnav noprint"><div class="in">' +
-    [['s-career', '경력'], ['s-op', '서류 소견'], ['s-key', '★ 중점 4영역'], ['s-case', '로직 케이스'], ['s-eval', '평가표'], ['s-final', '종합 판정']]
+    [['s-career', c.resume ? '이력서 원문' : '경력'], ['s-op', c.resume ? '맞춤 질문' : '서류 소견'], ['s-key', '★ 중점 4영역'], ['s-case', '로직 케이스'], ['s-eval', '평가표'], ['s-final', '종합 판정']]
       .map(function (x) { return '<a href="#" onclick="event.preventDefault();jump(\'' + x[0] + '\')">' + x[1] + '</a>'; }).join('') +
+    (c.pf ? '<a href="#/pf/' + c.id + '" style="color:var(--p)">포트폴리오 ↗</a>' : '') +
     '<span class="live">' + (w.n ? w.t + ' / 100 · ' + w.n + '/' + D.RUBRIC.length : '미채점') + (st.verdict ? ' · ' + esc(vlabel(st)) : '') + '</span></div></div>';
 
   out += '<div class="' + (st.absent ? 'dim' : '') + '"' + (st.absent ? ' inert' : '') + '>';
 
+  if (c.resume) {
+    out += secH('s-career', '01', '이력서 원문', '요약하지 않고 제출 이력서를 그대로 옮김') + '<div class="card">' + resumeHTML(c) + '</div></section>';
+    out += secH('s-op', '02', '맞춤 질문', '이 지원자 전용 · 이력서 원문 기준') +
+      '<div class="card"><ul style="margin:0;padding-left:19px">' +
+      (c.questions || []).map(function (q) { return '<li style="margin:7px 0;font-size:14.8px;line-height:1.6">' + esc(q) + '</li>'; }).join('') +
+      '</ul>' + (c.pf ? pfBtn(c) : '') + '</div></section>';
+  } else {
   out += secH('s-career', '01', '경력 이력', esc(c.total)) + '<div class="card"><div class="tl">' +
     c.career.map(function (r) { return '<div class="it"><div class="when">' + esc(r[0]) + '</div><div class="org">' + esc(r[1]) + '</div><div class="what">' + esc(r[2]) + '</div></div>'; }).join('') +
     '</div></div></section>';
@@ -458,6 +572,7 @@ function viewCand(c) {
     '<div class="card op minus"><h3><span class="tag y">확인 필요</span></h3><ul>' + c.concerns.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul></div></div>' +
     '<div class="card" style="margin-top:15px"><p class="lbl2">맞춤 질문 (이 지원자 전용)</p><ul style="margin:0;padding-left:19px">' +
     c.questions.map(function (q) { return '<li style="margin:7px 0;font-size:14.8px;line-height:1.6">' + esc(q) + '</li>'; }).join('') + '</ul></div></section>';
+  }
 
   out += secH('s-key', '03', '★ 대표님 중점 확인 4영역', '별도 기록 · 점수는 평가표에 자동 반영') +
     D.KEYQ.map(function (k) {
@@ -592,6 +707,12 @@ function render_() {
     if (!c) { location.hash = '#/'; return; }
     app.innerHTML = '<div class="view on">' + viewCand(c) + '</div>';
     document.title = c.name + ' · 판옵티콘 채용';
+  } else if (r.v === 'pf') {
+    var pc = cand(r.id);
+    if (!pc || !pc.pf) { location.hash = pc ? '#/c/' + pc.id : '#/'; return; }
+    app.innerHTML = '<div class="view on">' + viewPF(pc) + '</div>';
+    document.title = pc.name + ' 포트폴리오 · 판옵티콘 채용';
+    pfInit(pc, r.page);
   } else if (r.v === 'compare') { app.innerHTML = '<div class="view on">' + viewCompare() + '</div>'; document.title = '비교표 · 판옵티콘 채용'; }
   else if (r.v === 'guide') { app.innerHTML = '<div class="view on">' + viewGuide() + '</div>'; document.title = '평가 기준 · 판옵티콘 채용'; }
   else { app.innerHTML = '<div class="view on">' + viewHome() + '</div>'; document.title = '판옵티콘 채용 대시보드 · 프로덕트 기획자'; }
@@ -611,6 +732,7 @@ function render() {
   }
 }
 function rerender() {
+  if (route().v === 'pf') return;   // 포트폴리오 뷰어는 기록과 무관 — 동기화 때 다시 그리지 않음
   var y = window.pageYOffset;
   var a = document.activeElement;
   var mk = (a && a.getAttribute) ? a.getAttribute('data-mk') : null;
